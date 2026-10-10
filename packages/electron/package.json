@@ -56,8 +56,8 @@
     "lint": "node -e \"process.exit(0)\""
   },
   "build": {
-    "appId": "dev.openchamber.desktop",
-    "productName": "OpenChamber",
+    "appId": "dev.openchamber.desktop.zhcn",
+    "productName": "OpenChamber 中文版",
     "asarUnpack": [
       "node_modules/@openchamber/web/server/built-in-extensions/**/*",
       "node_modules/@openchamber/web/server/lib/git/credential-helper.js",
@@ -97,7 +97,7 @@
       "buildResources": "resources/icons",
       "output": "dist"
     },
-    "artifactName": "${productName}-${version}-${arch}.${ext}",
+    "artifactName": "OpenChamber-ZH-${version}-${arch}.${ext}",
     "npmRebuild": false,
     "mac": {
       "category": "public.app-category.developer-tools",
