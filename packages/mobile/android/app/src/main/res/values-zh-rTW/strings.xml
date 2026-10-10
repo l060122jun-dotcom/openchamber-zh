@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="sealed_push_channel_name">智慧代理更新</string>
+    <string name="share_missing_data">需要提供檔案名稱和檔案資料</string>
+    <string name="share_prepare_failed">無法準備檔案分享目錄</string>
+    <string name="share_write_failed">無法寫入要分享的檔案</string>
+</resources>

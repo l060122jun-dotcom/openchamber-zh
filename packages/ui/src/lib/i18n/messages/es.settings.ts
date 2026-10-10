@@ -3,7 +3,9 @@ import { guestIntegrationsI18n } from './guest-integrations.i18n';
 import { linearIntegrationI18n } from './linear-integration.i18n';
 import { thirdPartyIntegrationI18n } from './third-party-integrations.i18n';
 import { extensionCatalogI18n } from './extension-catalog.i18n';
+import { zhForkI18n } from './zh-fork.i18n';
 export const settingsDict = {
+  ...zhForkI18n['es'],
   'settings.sourceControl.ssh.title': 'Claves SSH',
   'settings.sourceControl.ssh.load': 'Mostrar claves',
   'settings.sourceControl.ssh.discover': 'Buscar claves en ~/.ssh',

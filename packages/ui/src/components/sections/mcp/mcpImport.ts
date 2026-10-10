@@ -1,3 +1,5 @@
+import { formatMessage, type I18nKey, type I18nParams } from '@/lib/i18n';
+import { dict as enDict } from '@/lib/i18n/messages/en';
 import { MCP_PROTOCOLS, type McpCodemodeChoice, type McpDraft, type McpProtocol } from '@/stores/useMcpConfigStore';
 
 export interface ImportedMcpResult {
@@ -257,23 +259,22 @@ function isServerConfig(val: Record<string, unknown>): boolean {
  */
 export function parseImportedMcpSnippet(
   raw: string,
-  options?: { fallbackName?: string },
+  options?: { fallbackName?: string; t?: (key: I18nKey, params?: I18nParams) => string },
 ): ImportedMcpOutcome {
+  const t = options?.t ?? ((key: I18nKey, params?: I18nParams) => formatMessage(enDict, key, params));
   let parsed: unknown;
   try {
     const trimmed = raw.trim();
     if (!trimmed) {
-      return buildError('No JSON content provided');
+      return buildError(t('settings.mcp.import.empty'));
     }
     parsed = JSON.parse(trimmed);
-  } catch (err) {
-    return buildError(
-      err instanceof Error ? `Invalid JSON: ${err.message}` : 'Invalid JSON',
-    );
+  } catch {
+    return buildError(t('settings.mcp.import.invalid'));
   }
 
   if (!isObject(parsed)) {
-    return buildError('Expected a JSON object, not an array or primitive');
+    return buildError(t('settings.mcp.import.objectRequired'));
   }
 
   const obj = parsed as Record<string, unknown>;
@@ -283,20 +284,18 @@ export function parseImportedMcpSnippet(
   if (isObject(mcpServers)) {
     const keys = Object.keys(mcpServers);
     if (keys.length === 0) {
-      return buildError('mcpServers object is empty', parsed);
+      return buildError(t('settings.mcp.import.emptyServers', { section: 'mcpServers' }), parsed);
     }
     if (keys.length > 1) {
       return buildError(
-        'Paste one server at a time. Found ' +
-          keys.length +
-          ' servers in mcpServers',
+        t('settings.mcp.import.multipleServers', { count: keys.length, section: 'mcpServers' }),
         parsed,
       );
     }
     const serverName = keys[0]!;
     const entry = mcpServers[serverName];
     if (!isObject(entry)) {
-      return buildError('Server entry is not a valid object', parsed);
+      return buildError(t('settings.mcp.import.invalidEntry'), parsed);
     }
     return buildResult(serverName, inferType(entry as Record<string, unknown>), entry as Record<string, unknown>);
   }
@@ -310,20 +309,18 @@ export function parseImportedMcpSnippet(
   if (isObject(mcp)) {
     const keys = Object.keys(mcp);
     if (keys.length === 0) {
-      return buildError('mcp object is empty', parsed);
+      return buildError(t('settings.mcp.import.emptyServers', { section: 'mcp' }), parsed);
     }
     if (keys.length > 1) {
       return buildError(
-        'Paste one server at a time. Found ' +
-          keys.length +
-          ' servers in mcp',
+        t('settings.mcp.import.multipleServers', { count: keys.length, section: 'mcp' }),
         parsed,
       );
     }
     const serverName = keys[0]!;
     const entry = mcp[serverName];
     if (!isObject(entry)) {
-      return buildError('Server entry in mcp is not a valid object', parsed);
+      return buildError(t('settings.mcp.import.invalidEntry'), parsed);
     }
     return buildResult(serverName, inferType(entry as Record<string, unknown>), entry as Record<string, unknown>);
   }
@@ -348,7 +345,7 @@ export function parseImportedMcpSnippet(
   }
 
   return buildError(
-    'No recognizable MCP server configuration found in JSON',
+    t('settings.mcp.import.unrecognized'),
     parsed,
   );
 }

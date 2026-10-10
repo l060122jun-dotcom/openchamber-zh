@@ -1,0 +1,21 @@
+{
+  "sourceLanguage": "en",
+  "strings": {
+    "NSLocalNetworkUsageDescription": { "localizations": {
+      "en": { "stringUnit": { "state": "translated", "value": "OpenChamber connects to OpenChamber servers on your local network." } },
+      "zh-Hans": { "stringUnit": { "state": "translated", "value": "OpenChamber 需要连接局域网中的 OpenChamber 服务器。" } },
+      "zh-Hant": { "stringUnit": { "state": "translated", "value": "OpenChamber 需要連線至區域網路中的 OpenChamber 伺服器。" } }
+    } },
+    "NSCameraUsageDescription": { "localizations": {
+      "en": { "stringUnit": { "state": "translated", "value": "OpenChamber uses the camera to scan a server's pairing QR code." } },
+      "zh-Hans": { "stringUnit": { "state": "translated", "value": "OpenChamber 需要使用相机扫描服务器的配对二维码。" } },
+      "zh-Hant": { "stringUnit": { "state": "translated", "value": "OpenChamber 需要使用相機掃描伺服器的配對 QR 碼。" } }
+    } },
+    "NSMicrophoneUsageDescription": { "localizations": {
+      "en": { "stringUnit": { "state": "translated", "value": "OpenChamber uses the microphone for voice dictation in the chat composer." } },
+      "zh-Hans": { "stringUnit": { "state": "translated", "value": "OpenChamber 需要使用麦克风在聊天输入框中进行语音输入。" } },
+      "zh-Hant": { "stringUnit": { "state": "translated", "value": "OpenChamber 需要使用麥克風在聊天輸入框中進行語音輸入。" } }
+    } }
+  },
+  "version": "1.0"
+}

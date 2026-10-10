@@ -1,0 +1,143 @@
+name: iOS Chinese unsigned IPA
+
+# Manual, self-contained iOS localization build for the Chinese fork.
+# It never touches the official release.yml / mobile-release.yml workflows and never
+# uses the upstream Apple signing secrets. It produces an UNSIGNED IPA that the user
+# must re-sign locally (Sideloadly / AltStore / own certificate) before installing.
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ios-zh-unsigned-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  MOBILE_PACKAGE_DIR: packages/mobile
+  IOS_PROJECT_DIR: packages/mobile/ios/App
+
+jobs:
+  ios-unsigned:
+    name: iOS unsigned IPA (Chinese)
+    runs-on: macos-15
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: '1.4.2'
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Report toolchain versions
+        shell: bash
+        run: |
+          set -euo pipefail
+          xcodebuild -version
+          pod --version
+          bun --version
+          node --version
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Build shared mobile web assets
+        run: bun run mobile:build
+
+      - name: Sync iOS project (Capacitor)
+        run: |
+          cd packages/mobile
+          bunx cap sync ios
+
+      - name: Install CocoaPods
+        working-directory: packages/mobile/ios/App
+        run: pod install --repo-update
+
+      - name: Archive iOS app without code signing
+        shell: bash
+        working-directory: packages/mobile/ios/App
+        run: |
+          set -euo pipefail
+          xcodebuild archive \
+            -workspace App.xcworkspace \
+            -scheme App \
+            -configuration Release \
+            -sdk iphoneos \
+            -destination 'generic/platform=iOS' \
+            -archivePath "$RUNNER_TEMP/OpenChamber.xcarchive" \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGN_IDENTITY="" \
+            CODE_SIGN_ENTITLEMENTS="" \
+            DEVELOPMENT_TEAM="" \
+            -allowProvisioningUpdates=NO
+
+      - name: Package unsigned IPA
+        shell: bash
+        run: |
+          set -euo pipefail
+          archive="$RUNNER_TEMP/OpenChamber.xcarchive"
+          app_path="$(find "$archive/Products/Applications" -maxdepth 1 -name '*.app' -print -quit)"
+          if [[ -z "$app_path" ]]; then
+            echo "No .app found in archive Products/Applications"
+            ls -la "$archive/Products/Applications" || true
+            exit 1
+          fi
+          echo "Archived app: $app_path"
+
+          # An .ipa is just a zip with a top-level Payload/ directory holding the .app.
+          export_dir="$RUNNER_TEMP/ipa"
+          rm -rf "$export_dir"
+          mkdir -p "$export_dir/Payload"
+          cp -R "$app_path" "$export_dir/Payload/"
+
+          (
+            cd "$export_dir"
+            zip -qry -y OpenChamber-unsigned.ipa Payload
+          )
+
+          ipa="$export_dir/OpenChamber-unsigned.ipa"
+          if [[ ! -s "$ipa" ]]; then
+            echo "IPA was not produced"
+            exit 1
+          fi
+          ls -l "$ipa"
+
+      - name: Inspect unsigned IPA
+        shell: bash
+        run: |
+          set -euo pipefail
+          ipa="$RUNNER_TEMP/ipa/OpenChamber-unsigned.ipa"
+          echo "=== unzip listing (top levels) ==="
+          unzip -l "$ipa" | head -n 40
+          echo "=== embedded app Info.plist ==="
+          tmp="$RUNNER_TEMP/inspect"
+          rm -rf "$tmp"
+          mkdir -p "$tmp"
+          unzip -q "$ipa" -d "$tmp"
+          app="$(find "$tmp/Payload" -maxdepth 1 -name '*.app' -print -quit)"
+          /usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$app/Info.plist"
+          /usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$app/Info.plist" || true
+          /usr/libexec/PlistBuddy -c 'Print :CFBundleVersion' "$app/Info.plist" || true
+          echo "=== nested bundles ==="
+          find "$app/PlugIns" -maxdepth 1 -name '*.appex' -print 2>/dev/null || true
+          echo "=== signature check (expected: unsigned) ==="
+          if codesign -dv "$app" 2>&1; then
+            echo "NOTE: app appears to carry a signature"
+          else
+            echo "Confirmed: app is not signed (codesign found no signature)"
+          fi
+          echo "=== sha256 ==="
+          shasum -a 256 "$ipa"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: openchamber-zh-ios-unsigned
+          path: ${{ runner.temp }}/ipa/OpenChamber-unsigned.ipa
+          if-no-files-found: error
+          retention-days: 14

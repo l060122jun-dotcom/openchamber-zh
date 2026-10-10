@@ -1,5 +1,6 @@
 import type { Session } from '@/lib/opencode/model';
 
+import { formatMessage, getCurrentIntlLocale, useI18nStore } from '@/lib/i18n';
 import { normalizePath } from './mobilePaths';
 
 /** Field readers shared by the mobile sessions sheet and its timeline list.
@@ -26,12 +27,13 @@ export const getSessionTimestamp = (session: Session): number => {
 export const formatRelativeShort = (timestamp: number): string => {
   if (timestamp <= 0) return '';
   const diffMs = Date.now() - timestamp;
-  if (diffMs < 60_000) return 'now';
+  const dictionary = useI18nStore.getState().dictionary;
+  if (diffMs < 60_000) return formatMessage(dictionary, 'common.relative.justNow');
   const minutes = Math.floor(diffMs / 60_000);
-  if (minutes < 60) return `${minutes}m`;
+  if (minutes < 60) return formatMessage(dictionary, 'common.relative.minutesAgoShort', { count: minutes });
   const hours = Math.floor(minutes / 60);
-  if (hours < 24) return `${hours}h`;
+  if (hours < 24) return formatMessage(dictionary, 'common.relative.hoursAgoShort', { count: hours });
   const days = Math.floor(hours / 24);
-  if (days < 7) return `${days}d`;
-  return new Intl.DateTimeFormat(undefined, { month: 'short', day: 'numeric' }).format(new Date(timestamp));
+  if (days < 7) return formatMessage(dictionary, 'common.relative.daysAgoShort', { count: days });
+  return new Intl.DateTimeFormat(getCurrentIntlLocale(), { month: 'short', day: 'numeric' }).format(new Date(timestamp));
 };

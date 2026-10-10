@@ -15,8 +15,11 @@ android {
         applicationId "com.openchamber.app"
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
-        versionCode ciVersionCode ? ciVersionCode.toInteger() : 1
-        versionName ciVersionName ?: "1.0"
+        // Chinese fork: debug and CI builds default above upstream's debug version so a
+        // Chinese build can replace an already-installed one instead of failing as a
+        // downgrade. Each upstream release bumps this (2.1.0 -> 204, 2.2.0 -> 220).
+        versionCode ciVersionCode ? ciVersionCode.toInteger() : 220
+        versionName ciVersionName ?: "2.2.0-zh"
         aaptOptions {
              // Files and dirs to omit from the packaged assets dir, modified to accommodate modern web apps.
              // Default: https://android.googlesource.com/platform/frameworks/base/+/282e181b58cf72b6ca770dc7ca5f91f135444502/tools/aapt/AaptAssets.cpp#61

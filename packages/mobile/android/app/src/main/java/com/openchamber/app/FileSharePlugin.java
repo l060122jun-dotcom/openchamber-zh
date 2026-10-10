@@ -30,14 +30,14 @@ public class FileSharePlugin extends Plugin {
         String mimeType = call.getString("mimeType", "application/octet-stream");
         String data = call.getString("data");
         if (fileName == null || data == null) {
-            call.reject("fileName and data are required");
+            call.reject(getContext().getString(R.string.share_missing_data));
             return;
         }
 
         File directory = new File(getContext().getCacheDir(), SHARE_DIR);
         clearDirectory(directory);
         if (!directory.isDirectory() && !directory.mkdirs()) {
-            call.reject("Failed to prepare the share directory");
+            call.reject(getContext().getString(R.string.share_prepare_failed));
             return;
         }
 
@@ -50,7 +50,7 @@ public class FileSharePlugin extends Plugin {
         try (FileOutputStream output = new FileOutputStream(file)) {
             output.write(Base64.decode(data, Base64.DEFAULT));
         } catch (IOException | IllegalArgumentException error) {
-            call.reject("Failed to write the shared file", error);
+            call.reject(getContext().getString(R.string.share_write_failed), error);
             return;
         }
 

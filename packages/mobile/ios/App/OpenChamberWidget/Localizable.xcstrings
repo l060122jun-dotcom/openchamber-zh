@@ -1,0 +1,19 @@
+{
+  "sourceLanguage": "en",
+  "strings": {
+    "No sessions yet": { "localizations": { "zh-Hans": { "stringUnit": { "state": "translated", "value": "暂无会话" } }, "zh-Hant": { "stringUnit": { "state": "translated", "value": "尚無工作階段" } } } },
+    "Untitled": { "localizations": { "zh-Hans": { "stringUnit": { "state": "translated", "value": "未命名" } }, "zh-Hant": { "stringUnit": { "state": "translated", "value": "未命名" } } } },
+    "Chat": { "localizations": { "zh-Hans": { "stringUnit": { "state": "translated", "value": "聊天" } }, "zh-Hant": { "stringUnit": { "state": "translated", "value": "聊天" } } } },
+    "Sessions": { "localizations": { "zh-Hans": { "stringUnit": { "state": "translated", "value": "会话" } }, "zh-Hant": { "stringUnit": { "state": "translated", "value": "工作階段" } } } },
+    "Quick Actions": { "localizations": { "zh-Hans": { "stringUnit": { "state": "translated", "value": "快捷操作" } }, "zh-Hant": { "stringUnit": { "state": "translated", "value": "快速操作" } } } },
+    "New Session": { "localizations": { "zh-Hans": { "stringUnit": { "state": "translated", "value": "新建会话" } }, "zh-Hant": { "stringUnit": { "state": "translated", "value": "新增工作階段" } } } },
+    "Needs Attention": { "localizations": { "zh-Hans": { "stringUnit": { "state": "translated", "value": "需要关注" } }, "zh-Hant": { "stringUnit": { "state": "translated", "value": "需要注意" } } } },
+    "New OpenChamber Session": { "localizations": { "zh-Hans": { "stringUnit": { "state": "translated", "value": "新建 OpenChamber 会话" } }, "zh-Hant": { "stringUnit": { "state": "translated", "value": "新增 OpenChamber 工作階段" } } } },
+    "Recent sessions and quick actions.": { "localizations": { "zh-Hans": { "stringUnit": { "state": "translated", "value": "最近会话和快捷操作。" } }, "zh-Hant": { "stringUnit": { "state": "translated", "value": "最近的工作階段和快速操作。" } } } },
+    "New session, status and instances.": { "localizations": { "zh-Hans": { "stringUnit": { "state": "translated", "value": "新建会话、查看状态和管理实例。" } }, "zh-Hant": { "stringUnit": { "state": "translated", "value": "新增工作階段、查看狀態和管理執行個體。" } } } },
+    "Recent sessions with their project.": { "localizations": { "zh-Hans": { "stringUnit": { "state": "translated", "value": "最近会话及其所属项目。" } }, "zh-Hant": { "stringUnit": { "state": "translated", "value": "最近的工作階段及其所屬專案。" } } } },
+    "Start a new OpenChamber session.": { "localizations": { "zh-Hans": { "stringUnit": { "state": "translated", "value": "开始新的 OpenChamber 会话。" } }, "zh-Hant": { "stringUnit": { "state": "translated", "value": "開始新的 OpenChamber 工作階段。" } } } },
+    "How many sessions need attention.": { "localizations": { "zh-Hans": { "stringUnit": { "state": "translated", "value": "查看需要关注的会话数量。" } }, "zh-Hant": { "stringUnit": { "state": "translated", "value": "查看需要注意的工作階段數量。" } } } }
+  },
+  "version": "1.0"
+}

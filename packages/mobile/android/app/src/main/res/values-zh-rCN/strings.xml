@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="sealed_push_channel_name">智能体更新</string>
+    <string name="share_missing_data">需要提供文件名和文件数据</string>
+    <string name="share_prepare_failed">无法准备文件分享目录</string>
+    <string name="share_write_failed">无法写入要分享的文件</string>
+</resources>

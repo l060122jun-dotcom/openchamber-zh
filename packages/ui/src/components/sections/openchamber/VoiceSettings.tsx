@@ -842,7 +842,7 @@ export const VoiceSettings: React.FC = () => {
                 }),
             });
 
-            if (!response.ok) throw new Error('Preview failed');
+            if (!response.ok) throw new Error(t('settings.voice.page.preview.failed'));
 
             const blob = await response.blob();
             const url = URL.createObjectURL(blob);
@@ -897,7 +897,7 @@ export const VoiceSettings: React.FC = () => {
             });
 
             if (!response.ok) {
-                const errorData = await response.json().catch(() => ({ error: 'Unknown error' }));
+                const errorData = await response.json().catch(() => ({ error: t('errorBoundary.state.unknownError') }));
                 throw new Error(errorData.error || `HTTP ${response.status}`);
             }
 
@@ -958,7 +958,7 @@ export const VoiceSettings: React.FC = () => {
             });
 
             if (!response.ok) {
-                const errorData = await response.json().catch(() => ({ error: 'Unknown error' }));
+                const errorData = await response.json().catch(() => ({ error: t('errorBoundary.state.unknownError') }));
                 throw new Error(errorData.error || `HTTP ${response.status}`);
             }
 

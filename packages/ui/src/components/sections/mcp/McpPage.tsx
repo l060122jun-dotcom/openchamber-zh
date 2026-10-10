@@ -262,8 +262,8 @@ interface EnvEditorProps {
   keyTransform?: (value: string) => string;
   keyPlaceholder?: string;
   keyInputClassName?: string;
-  pasteLabel?: string;
-  pasteTitle?: string;
+  pasteLabel: string;
+  pasteTitle: string;
   noPairsFoundError: string;
   importSuccess: (count: number) => string;
   clipboardReadFailed: string;
@@ -286,8 +286,8 @@ const EnvEditor: React.FC<EnvEditorProps> = ({
   keyTransform = normalizeEnvKey,
   keyPlaceholder = 'API_KEY',
   keyInputClassName = 'w-36 shrink-0 font-mono typography-meta uppercase',
-  pasteLabel = 'Paste .env',
-  pasteTitle = 'Paste KEY=VALUE lines from clipboard',
+  pasteLabel,
+  pasteTitle,
   noPairsFoundError,
   importSuccess,
   clipboardReadFailed,
@@ -673,7 +673,7 @@ export const McpPage: React.FC = () => {
   }, [t]);
 
   const handleImportJson = React.useCallback(() => {
-    const outcome = parseImportedMcpSnippet(importJsonText, { fallbackName: draftName });
+    const outcome = parseImportedMcpSnippet(importJsonText, { fallbackName: draftName, t });
     if (!outcome.ok) {
       setImportError(outcome.error);
       return;

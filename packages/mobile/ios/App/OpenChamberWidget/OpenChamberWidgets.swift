@@ -27,7 +27,7 @@ struct OverviewWidgetView: View {
                             // Every row shows a same-size dot so titles align: a filled orange
                             // dot for unread, a hollow grey ring for read.
                             unreadIndicator(session.unread)
-                            Text(session.title.isEmpty ? "Untitled" : session.title)
+                            Text(session.title.isEmpty ? String(localized: "Untitled") : session.title)
                                 .font(.subheadline)
                                 .fontWeight(session.unread ? .semibold : .regular)
                                 .lineLimit(1)
@@ -210,7 +210,7 @@ struct SessionsWidgetView: View {
                 }
                 .frame(width: 8, height: 8)
                 VStack(alignment: .leading, spacing: 2) {
-                    Text(session.title.isEmpty ? "Untitled" : session.title)
+                    Text(session.title.isEmpty ? String(localized: "Untitled") : session.title)
                         .font(.subheadline)
                         .fontWeight(session.unread ? .semibold : .regular)
                         .lineLimit(1)
