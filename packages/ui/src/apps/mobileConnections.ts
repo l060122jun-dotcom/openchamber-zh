@@ -604,6 +604,35 @@ const writeConnections = (connections: MobileSavedConnection[]): void => {
   }
 };
 
+// The Chinese fork's own remote entry, shipped so a fresh install can reach the
+// user's server without the QR pairing flow. It is an ordinary saved connection:
+// the user can connect, rename or remove it like any other, and once the list is
+// non-empty nothing is seeded again.
+const DEFAULT_REMOTE_CONNECTION_URL = 'https://101.251.161.155:8445';
+const DEFAULT_REMOTE_CONNECTION_LABEL = 'OpenChamber 远程';
+
+const seedDefaultRemoteConnection = (): void => {
+  if (typeof window === 'undefined') return;
+  try {
+    // Only seed an untouched install; a stored value — even an empty list the
+    // user cleared on purpose — means the list is theirs to manage.
+    if (window.localStorage.getItem(MOBILE_CONNECTIONS_STORAGE_KEY) !== null) return;
+  } catch {
+    return;
+  }
+  const candidates = directCandidatesFromUrl(DEFAULT_REMOTE_CONNECTION_URL);
+  if (candidates.length === 0) return;
+  writeConnections([{
+    id: crypto.randomUUID(),
+    label: DEFAULT_REMOTE_CONNECTION_LABEL,
+    candidates,
+    lastUsedAt: 0,
+  }]);
+  logStorage('seed:default-remote', { url: DEFAULT_REMOTE_CONNECTION_URL });
+};
+
+export { DEFAULT_REMOTE_CONNECTION_URL };
+
 const upsertConnectionInList = (
   connections: MobileSavedConnection[],
   draft: { id?: string; label: string; candidates: MobileTransportCandidate[]; clientToken?: string; hasToken?: boolean },
@@ -775,6 +804,7 @@ const migrateLegacyInlineTokens = async (): Promise<void> => {
 
 export const loadMobileConnections = async (): Promise<MobileSavedConnection[]> => {
   await migrateLegacyInlineTokens();
+  seedDefaultRemoteConnection();
   return readConnections();
 };
 

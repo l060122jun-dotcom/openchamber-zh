@@ -6,7 +6,7 @@ import { OpenChamberLogo } from '@/components/ui/OpenChamberLogo';
 import { useI18n } from '@/lib/i18n';
 import { cn } from '@/lib/utils';
 
-import { connectionDisplayUrl, useMobileConnection } from './mobileConnections';
+import { connectionDisplayUrl, DEFAULT_REMOTE_CONNECTION_URL, useMobileConnection } from './mobileConnections';
 import { useDebugPanelLongPress } from './mobileConnectionDebug';
 import { MobileConnectionDebugPanel } from './MobileConnectionDebugPanel';
 import { isQrScanSupported, parseConnectionPayload, scanConnectionQr } from './mobileQrScan';
@@ -26,7 +26,9 @@ export const MobileConnectionWelcome: React.FC<{
   const { t } = useI18n();
   const conn = useMobileConnection(onConnected);
   const { connections, isBusy, isPasswordBusy, error, pendingConnection } = conn;
-  const [serverUrl, setServerUrl] = React.useState('');
+  // Prefilled with the fork's remote entry: the saved connection already points
+  // there, and this keeps the manual form useful if that entry is removed.
+  const [serverUrl, setServerUrl] = React.useState(DEFAULT_REMOTE_CONNECTION_URL);
   const [connectionName, setConnectionName] = React.useState('');
   const [clientToken, setClientToken] = React.useState('');
   const [isScanning, setIsScanning] = React.useState(false);

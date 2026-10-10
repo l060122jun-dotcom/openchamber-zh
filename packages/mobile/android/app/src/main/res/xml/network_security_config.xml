@@ -6,4 +6,15 @@
             <certificates src="user" />
         </trust-anchors>
     </base-config>
+    <!-- The Chinese fork's remote entry serves a self-signed certificate. Trust
+         that exact certificate for that one host only, so the app reaches the
+         server without asking the user to install anything system-wide. Every
+         other host keeps the default trust. -->
+    <domain-config>
+        <domain includeSubdomains="false">101.251.161.155</domain>
+        <trust-anchors>
+            <certificates src="@raw/openchamber_remote" />
+            <certificates src="system" />
+        </trust-anchors>
+    </domain-config>
 </network-security-config>
