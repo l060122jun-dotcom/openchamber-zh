@@ -15,6 +15,7 @@ import { dict as zhTwDict } from './messages/zh-TW';
 import { dict as trDict } from './messages/tr';
 import { dict as arDict } from './messages/ar';
 import { dict as heDict } from './messages/he';
+import { zhForkI18n } from './messages/zh-fork.i18n';
 
 const localeDictionaries = {
   en: enDict,
@@ -33,6 +34,16 @@ const localeDictionaries = {
   ar: arDict,
   he: heDict,
 } as const;
+
+/**
+ * The Chinese fork keeps the fork-only keys in the Chinese dictionaries. Every
+ * other locale answers those from English, which is what the app falls back to
+ * anyway, so the parity check walks the dictionaries through the same shape.
+ */
+const withForkFallback = (dictionary: Record<string, string>) => ({
+  ...zhForkI18n.en,
+  ...dictionary,
+});
 
 describe('i18n dictionaries', () => {
   test('repository links name either provider in every locale', () => {
@@ -62,10 +73,10 @@ describe('i18n dictionaries', () => {
     }
   });
   test('all locales stay in key parity with english', () => {
-    const englishKeys = Object.keys(enDict).sort();
+    const englishKeys = Object.keys(withForkFallback(enDict)).sort();
 
     for (const dictionary of Object.values(localeDictionaries)) {
-      expect(Object.keys(dictionary).sort()).toEqual(englishKeys);
+      expect(Object.keys(withForkFallback(dictionary)).sort()).toEqual(englishKeys);
     }
   });
 

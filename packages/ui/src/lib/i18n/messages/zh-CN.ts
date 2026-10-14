@@ -65,6 +65,27 @@ export const dict: Record<I18nKey, string> = {
   'chat.liveActivity.usedSubagent': '使用了 {count} 个子智能体',
   'chat.liveActivity.usedSubagents': '使用了 {count} 个子智能体',
   'sessions.sidebar.projectAction.active': '项目操作正在运行',
+  // Fork-only strings: they replace copy the call sites had hardcoded in English
+  // (command rename toast, TTS preview failure, MCP JSON import errors, port
+  // forward labels). They live here rather than in a separate module because the
+  // values belong to zh-CN/zh-TW; every other locale takes them from zh-fork.i18n.ts.
+  'settings.commands.sidebar.toast.commandRenamed': '命令已重命名为“{name}”',
+  'settings.voice.page.preview.failed': '试听失败',
+  'settings.mcp.import.empty': '请输入 JSON 内容',
+  'settings.mcp.import.invalid': 'JSON 格式无效',
+  'settings.mcp.import.objectRequired': '需要 JSON 对象，不能使用数组或基本类型值',
+  'settings.mcp.import.emptyServers': '{section} 对象为空',
+  'settings.mcp.import.multipleServers': '请一次粘贴一个服务器。{section} 中有 {count} 个服务器',
+  'settings.mcp.import.invalidEntry': '服务器条目不是有效对象',
+  'settings.mcp.import.unrecognized': 'JSON 中未找到可识别的 MCP 服务器配置',
+  'settings.remoteInstances.page.forward.localTarget': '本地目标',
+  'settings.remoteInstances.page.forward.localListen': '本地监听',
+  'settings.remoteInstances.page.forward.remoteListen': '远程监听',
+  'settings.remoteInstances.page.forward.remoteTarget': '远程目标',
+  'settings.remoteInstances.page.forward.localTargetHint': '本机接收远程 -R 监听器流量的主机和端口。',
+  'settings.remoteInstances.page.forward.localListenHint': '此转发在本机监听的主机和端口。',
+  'settings.remoteInstances.page.forward.remoteListenHint': 'SSH 在远程创建 -R 监听器的主机和端口。',
+  'settings.remoteInstances.page.forward.remoteTargetHint': '远程接收本地 -L 监听器流量的主机和端口。',
   ...settingsDict,
   'gitView.operation.title': 'Git 操作',
   'gitView.operation.recovery.storage': 'OpenChamber 无法在这里保存 Git 传输的状态。请允许站点存储并重新加载；在此之前 push 和 pull 已暂停。',

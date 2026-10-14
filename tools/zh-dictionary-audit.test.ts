@@ -34,10 +34,11 @@ const intentionalEnglish = new Set([
   '{behind}↓ {ahead}↑', '{current} / {total}', '{model} · {status}',
   '{input} ↑ · {output} ↓', 'A → Z', 'Z → A', '—', '?',
   'GitHub：{login}', 'GitLab：{login}', 'Cron：{cron}', 'Cron：{cron}（{timezone}）',
+  '+diff', 'plan', 'Untitled',
   '',
 ]);
 
-describe('Chinese dictionary audit (v2.2.0 baseline)', () => {
+describe('Chinese dictionary audit (v2.3.2 baseline)', () => {
   test('every English key is present in the Chinese dictionary', () => {
     const missing: string[] = [];
     for (const key of Object.keys(en) as I18nKey[]) {
@@ -93,11 +94,16 @@ describe('Chinese dictionary audit (v2.2.0 baseline)', () => {
       'common.date.today': '今天',
       'common.language.english': '英语',
       'mobile.changes.diffDetail.subtitle': '只读 diff',
+      // Fork-only strings the port re-applied on top of upstream's dictionaries.
+      'settings.commands.sidebar.toast.commandRenamed': '命令已重命名为“{name}”',
+      'settings.remoteInstances.page.forward.localTarget': '本地目标',
+      'settings.mcp.import.unrecognized': 'JSON 中未找到可识别的 MCP 服务器配置',
     };
     for (const [key, value] of Object.entries(expected)) {
       expect(formatMessage(zh, key as I18nKey), key).toBe(value);
     }
     expect(formatMessage(zh, 'common.relative.minutesAgoShort', { count: 2 })).toBe('2分钟前');
     expect(formatMessage(zh, 'common.relative.hoursAgoShort', { count: 3 })).toBe('3小时前');
+    expect(formatMessage(zh, 'settings.commands.sidebar.toast.commandRenamed', { name: 'foo' })).toBe('命令已重命名为“foo”');
   });
 });
