@@ -3,8 +3,16 @@ import { DEFAULT_LOCALE, type Locale } from './runtime';
 import { initializeLocale, resetI18nDictionaryCacheForTests, useI18nStore } from './store';
 import { dict as enDict } from './messages/en';
 import { dict as zhCnDict } from './messages/zh-CN';
+import { zhForkI18n } from './messages/zh-fork.i18n';
 
 const defaultDictionary = useI18nStore.getState().dictionary;
+
+// The fork's own keys live in the Chinese dictionaries; every other locale gets
+// them from this module, so the store must merge it into each loaded dictionary.
+const forkKeys = (dictionary: Record<string, string>) => ({
+  ...zhForkI18n.en,
+  ...dictionary,
+});
 
 const resetStore = () => {
   resetI18nDictionaryCacheForTests();
@@ -29,7 +37,7 @@ describe('i18n store', () => {
   beforeEach(resetStore);
 
   test('starts with the dictionary matching the default Chinese locale', () => {
-    expect(defaultDictionary).toBe(zhCnDict);
+    expect(defaultDictionary).toEqual(forkKeys(zhCnDict));
     expect(defaultDictionary['settings.view.home.title']).toBe('设置');
   });
 
@@ -37,16 +45,16 @@ describe('i18n store', () => {
     useI18nStore.setState({ locale: DEFAULT_LOCALE, dictionary: enDict });
     initializeLocale();
     const settled = useI18nStore.getState();
-    expect(settled.dictionary).toBe(zhCnDict);
+    expect(settled.dictionary).toEqual(forkKeys(zhCnDict));
     expect(settled.dictionary['settings.view.home.title']).toBe('设置');
-    expect(settled.dictionary).not.toBe(enDict);
+    expect(settled.dictionary).not.toEqual(enDict);
   });
 
   test('switching back to cached Chinese applies the Chinese dictionary', () => {
     useI18nStore.getState().setLocale('en');
-    expect(useI18nStore.getState().dictionary).toBe(enDict);
+    expect(useI18nStore.getState().dictionary).toEqual(forkKeys(enDict));
     useI18nStore.getState().setLocale('zh-CN');
-    expect(useI18nStore.getState().dictionary).toBe(zhCnDict);
+    expect(useI18nStore.getState().dictionary).toEqual(forkKeys(zhCnDict));
     expect(useI18nStore.getState().dictionary['settings.view.home.title']).toBe('设置');
   });
 
@@ -77,5 +85,12 @@ describe('i18n store', () => {
     } finally {
       resetStore();
     }
+  });
+
+  test('a locale without its own fork copy answers the fork keys in English', () => {
+    const key = 'settings.commands.sidebar.toast.commandRenamed';
+    const dictionary = useI18nStore.getState().dictionary;
+    expect(dictionary[key]).toBeTruthy();
+    expect(forkKeys(enDict)[key]).toBe(zhForkI18n.en[key]);
   });
 });

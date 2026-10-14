@@ -1,12 +1,17 @@
-import type { Locale } from '../runtime';
-
 /**
  * Strings the Chinese fork adds on top of upstream: they replace copy that was
  * still hardcoded English at the call site (command rename toast, TTS preview
- * failures, MCP JSON import errors). They are spread into each locale's
- * `settingsDict`, so every locale stays complete and the English dictionary
- * remains the single source of the key set.
+ * failures, MCP JSON import errors, port forward labels).
+ *
+ * The two Chinese dictionaries carry these keys themselves with real Chinese
+ * copy; this module is what every other locale answers with. English is the base
+ * because the app already falls back to it, so an untranslated locale shows the
+ * English sentence rather than a missing key.
  */
+
+/** The locales that answer the fork keys from here; the Chinese dictionaries carry their own copy. */
+type ForkLocale = 'en' | 'de' | 'fr' | 'nl' | 'es' | 'pt-BR' | 'uk' | 'ko' | 'pl' | 'ja' | 'tr' | 'ar' | 'he';
+
 type Values = readonly [
   /* commandRenamed */ string,
   /* previewFailed */ string,
@@ -68,44 +73,6 @@ export const zhForkI18n = {
     'Local host and port where this forward listens on your machine.',
     'Remote host and port where SSH creates the -R listener.',
     'Remote host and port that receives traffic from the local -L listener.',
-  ]),
-  'zh-CN': messages([
-    '命令已重命名为“{name}”',
-    '试听失败',
-    '请输入 JSON 内容',
-    'JSON 格式无效',
-    '需要 JSON 对象，不能使用数组或基本类型值',
-    '{section} 对象为空',
-    '请一次粘贴一个服务器。{section} 中有 {count} 个服务器',
-    '服务器条目不是有效对象',
-    'JSON 中未找到可识别的 MCP 服务器配置',
-    '本地目标',
-    '本地监听',
-    '远程监听',
-    '远程目标',
-    '本机接收远程 -R 监听器流量的主机和端口。',
-    '此转发在本机监听的主机和端口。',
-    'SSH 在远程创建 -R 监听器的主机和端口。',
-    '远程接收本地 -L 监听器流量的主机和端口。',
-  ]),
-  'zh-TW': messages([
-    '命令已重新命名為「{name}」',
-    '試聽失敗',
-    '請輸入 JSON 內容',
-    'JSON 格式無效',
-    '需要 JSON 物件，不能使用陣列或基本型別值',
-    '{section} 物件為空',
-    '請一次貼上一個伺服器。{section} 中有 {count} 個伺服器',
-    '伺服器項目不是有效物件',
-    'JSON 中找不到可識別的 MCP 伺服器設定',
-    '本機目標',
-    '本機監聽',
-    '遠端監聽',
-    '遠端目標',
-    '本機接收遠端 -R 監聽器流量的主機和連接埠。',
-    '此轉送在本機監聽的主機和連接埠。',
-    'SSH 在遠端建立 -R 監聽器的主機和連接埠。',
-    '遠端接收本機 -L 監聽器流量的主機和連接埠。',
   ]),
   de: messages([
     'Befehl in „{name}“ umbenannt',
@@ -297,4 +264,42 @@ export const zhForkI18n = {
     'SSH’nin -R dinleyicisini oluşturduğu uzak ana makine ve bağlantı noktası.',
     'Yerel -L dinleyicisinden gelen trafiği alan uzak ana makine ve bağlantı noktası.',
   ]),
-} satisfies Record<Locale, ReturnType<typeof messages>>;
+  ar: messages([
+    'أُعيدت تسمية الأمر إلى "{name}"',
+    'فشل الاستماع التجريبي',
+    'لم يتم تقديم محتوى JSON',
+    'JSON غير صالح',
+    'يلزم كائن JSON، لا مصفوفة أو قيمة أولية',
+    'كائن {section} فارغ',
+    'الصق خادمًا واحدًا في كل مرة. وُجد {count} خادم في {section}',
+    'إدخال الخادم ليس كائنًا صالحًا',
+    'لم يُعثر في JSON على تكوين خادم MCP يمكن التعرف عليه',
+    'الهدف المحلي',
+    'الاستماع المحلي',
+    'الاستماع البعيد',
+    'الهدف البعيد',
+    'المضيف والمنفذ المحليان اللذان يستقبلان حركة مرور مستمع -R البعيد.',
+    'المضيف والمنفذ اللذان يستمع عليهما هذا التمرير على جهازك.',
+    'المضيف والمنفذ البعيدان حيث ينشئ SSH مستمع -R.',
+    'المضيف والمنفذ البعيدان اللذان يستقبلان حركة مرور مستمع -L المحلي.',
+  ]),
+  he: messages([
+    'הפקודה שונתה ל-«{name}»',
+    'התצוגה המקדימה נכשלה',
+    'לא סופק תוכן JSON',
+    'JSON לא תקין',
+    'נדרש אובייקט JSON, לא מערך או ערך בסיסי',
+    'האובייקט {section} ריק',
+    'יש להדביק שרת אחד בכל פעם. נמצאו {count} שרתים ב-{section}',
+    'רשומת השרת אינה אובייקט תקין',
+    'לא נמצא ב-JSON תצורת שרת MCP מזוהה',
+    'יעד מקומי',
+    'האזנה מקומית',
+    'האזנה מרוחקת',
+    'יעד מרוחק',
+    'המארח והפורט המקומיים שמקבלים תעבורה ממאזין ‎-R המרוחק.',
+    'המארח והפורט שבהם ההעברה הזו מאזינה במחשב שלך.',
+    'המארח והפורט המרוחקים שבהם SSH יוצר את מאזין ‎-R.',
+    'המארח והפורט המרוחקים שמקבלים תעבורה ממאזין ‎-L המקומי.',
+  ]),
+} satisfies Record<ForkLocale, ReturnType<typeof messages>>;

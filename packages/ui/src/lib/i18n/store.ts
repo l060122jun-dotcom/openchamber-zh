@@ -2,6 +2,8 @@ import { create } from 'zustand';
 
 import { dict as enDict, type I18nKey } from './messages/en';
 import { dict as zhCnDict } from './messages/zh-CN';
+import { dict as zhTwDict } from './messages/zh-TW';
+import { zhForkI18n } from './messages/zh-fork.i18n';
 import { DEFAULT_LOCALE, detectInitialLocale, type Locale, writeStoredLocale } from './runtime';
 
 export type I18nParams = Record<string, string | number | boolean | null | undefined>;
@@ -14,12 +16,25 @@ type I18nState = {
   setLocale: (locale: Locale) => void;
 };
 
-const dictionaries = new Map<Locale, I18nDictionary>([['en', enDict], ['zh-CN', zhCnDict]]);
+// The Chinese fork keeps its own keys in the Chinese dictionaries, so a locale
+// loaded from upstream's files answers those from English, which is what the app
+// falls back to anyway. The fork's dictionaries already carry them.
+const withForkKeys = (dictionary: object): I18nDictionary => ({
+  ...zhForkI18n.en,
+  ...dictionary,
+}) as I18nDictionary;
+
+const dictionaries = new Map<Locale, I18nDictionary>([
+  ['en', withForkKeys(enDict)],
+  ['zh-CN', withForkKeys(zhCnDict)],
+  ['zh-TW', withForkKeys(zhTwDict)],
+]);
 
 export function resetI18nDictionaryCacheForTests(): void {
   dictionaries.clear();
-  dictionaries.set('en', enDict);
-  dictionaries.set('zh-CN', zhCnDict);
+  dictionaries.set('en', withForkKeys(enDict));
+  dictionaries.set('zh-CN', withForkKeys(zhCnDict));
+  dictionaries.set('zh-TW', withForkKeys(zhTwDict));
 }
 
 async function loadDictionary(locale: Locale): Promise<I18nDictionary> {
@@ -29,13 +44,13 @@ async function loadDictionary(locale: Locale): Promise<I18nDictionary> {
   }
 
   const mod = locale === 'zh-CN'
-    ? await import('./messages/zh-CN') as { dict: I18nDictionary }
+    ? { dict: withForkKeys(zhCnDict) }
     : locale === 'fr'
       ? await import('./messages/fr') as { dict: I18nDictionary }
       : locale === 'nl'
         ? await import('./messages/nl') as { dict: I18nDictionary }
     : locale === 'zh-TW'
-      ? await import('./messages/zh-TW') as { dict: I18nDictionary }
+      ? { dict: withForkKeys(zhTwDict) }
       : locale === 'es'
         ? await import('./messages/es') as { dict: I18nDictionary }
         : locale === 'pt-BR'
@@ -56,14 +71,15 @@ async function loadDictionary(locale: Locale): Promise<I18nDictionary> {
                         ? await import('./messages/ar')
                         : locale === 'he'
                           ? await import('./messages/he')
-                          : { dict: enDict };
-  dictionaries.set(locale, mod.dict);
-  return mod.dict;
+                          : { dict: withForkKeys(enDict) };
+  const dictionary = withForkKeys(mod.dict);
+  dictionaries.set(locale, dictionary);
+  return dictionary;
 }
 
 export const useI18nStore = create<I18nState>()((set, get) => ({
   locale: DEFAULT_LOCALE,
-  dictionary: dictionaries.get(DEFAULT_LOCALE) ?? enDict,
+  dictionary: dictionaries.get(DEFAULT_LOCALE) ?? withForkKeys(enDict),
   loadingLocale: null,
   setLocale: (locale) => {
     const current = get();
