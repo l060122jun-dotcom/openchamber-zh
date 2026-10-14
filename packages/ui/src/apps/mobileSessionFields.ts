@@ -1,6 +1,8 @@
 import type { Session } from '@/lib/opencode/model';
 
 import { formatMessage, getCurrentIntlLocale, useI18nStore } from '@/lib/i18n';
+import { getSessionActivityTime } from '@/sync/session-ordering';
+
 import { normalizePath } from './mobilePaths';
 
 /** Field readers shared by the mobile sessions sheet and its timeline list.
@@ -18,11 +20,8 @@ export const getSessionDirectory = (session: Session): string => {
   return normalizePath(sessionWithDirectory.directory ?? sessionWithDirectory.project?.worktree ?? null);
 };
 
-export const getSessionTimestamp = (session: Session): number => {
-  const raw = session.time?.updated ?? session.time?.created;
-  const value = typeof raw === 'number' ? raw : Number(raw);
-  return Number.isFinite(value) && value > 0 ? value : 0;
-};
+/** The last conversation, the time the lists order by; a rename does not move it. */
+export const getSessionTimestamp = (session: Session): number => getSessionActivityTime(session);
 
 export const formatRelativeShort = (timestamp: number): string => {
   if (timestamp <= 0) return '';

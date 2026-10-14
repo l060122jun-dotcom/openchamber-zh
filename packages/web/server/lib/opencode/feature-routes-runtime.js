@@ -72,7 +72,7 @@ import { refreshGitLabAccessToken, resolveGitLabClientId } from '../gitlab/devic
 import { createGitCredentialResolver, createHttpsCredentialReference, parseGitCredentialReference } from '../git/credential-resolver.js';
 import { createGitRepositoryCredentialRuntime } from '../git/repository-credential-runtime.js';
 import { managedSshCommand } from '../git/network-operations.js';
-import { createNetworkOperations } from '../git/network-operations.js';
+import { createNetworkOperations, createTrustedDirectoriesConfig } from '../git/network-operations.js';
 import { createManagedSshCredentialStore } from '../git/ssh-credential-storage.js';
 import { createManagedSshInventory } from '../git/credentials.js';
 import { createContributorProvenanceStore } from '../git/contributor-provenance-storage.js';
@@ -111,6 +111,7 @@ export const createFeatureRoutesRuntime = (dependencies) => {
   let walkthroughBindingService = null;
   let gitRepositoryCredentialRuntime = null;
   let networkOperations = null;
+  let gitWorktreeCreation = null;
   const getWalkthroughService = async () => {
     if (!walkthroughService) {
       const [service, pullRequest] = await Promise.all([
@@ -169,6 +170,30 @@ export const createFeatureRoutesRuntime = (dependencies) => {
       directory,
       parentRemoteName,
       repositoryAuthority,
+    });
+  };
+
+  /**
+   * A worktree from a pull or merge request given by number, the same kind
+   * the New worktree dialog makes: the server reads the change request with
+   * the project's own account and creates the worktree through the Git
+   * routes' contributor pipeline. `name` and `branchName` default to the
+   * change request's head branch.
+   */
+  const createChangeRequestWorktree = async ({ directory, number, name, branchName }) => {
+    if (!(gitWorktreeCreation?.createWorktree instanceof Function)
+      || !(walkthroughBindingService?.resolveChangeRequestWorktreeSource instanceof Function)) {
+      throw Object.assign(new Error('Worktrees from pull requests are unavailable'), {
+        code: 'RUNTIME_UNSUPPORTED', status: 501,
+      });
+    }
+    const { headBranch, sourceRequest } = await walkthroughBindingService.resolveChangeRequestWorktreeSource({ directory, number });
+    const branch = branchName || headBranch;
+    return gitWorktreeCreation.createWorktree(directory, {
+      mode: 'existing',
+      branchName: branch,
+      worktreeName: name || branch,
+      changeRequestSource: sourceRequest,
     });
   };
 
@@ -623,10 +648,11 @@ export const createFeatureRoutesRuntime = (dependencies) => {
       gitBinary,
       validateGitIdentity,
       resolveGitIdentity,
+      trustedDirectoriesConfig: createTrustedDirectoriesConfig({ gitBinary }),
     });
     await registerBuiltInGuests({ persistPath: extensionsPersistPath(openchamberDataDir), root: routeDependencies.builtInExtensionsDir });
     registerGuestRoutes(app, { openchamberDataDir, openchamberVersion, resolveGitBinaryForSpawn, resolveOptionalProjectDirectory, getSmallModelService, onGuestDeactivated, surfaceViewerHeaders });
-    registerGitRoutes(app, {
+    gitWorktreeCreation = registerGitRoutes(app, {
       // Identities for accounts connected before identities carried one are
       // made the first time identities are listed: a moment someone asked for,
       // not startup, where a development restart can kill a process holding a
@@ -703,6 +729,7 @@ export const createFeatureRoutesRuntime = (dependencies) => {
   return {
     registerRoutes,
     hydrateBoundCheckout,
+    createChangeRequestWorktree,
     /** Writes the Git credential helper's endpoint file; a no-op until the Git routes are registered. */
     publishRepositoryCredentialEndpoint: async () => { await gitRepositoryCredentialRuntime?.publish(); },
   };
