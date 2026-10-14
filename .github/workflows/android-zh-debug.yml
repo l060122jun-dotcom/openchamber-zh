@@ -43,6 +43,25 @@ jobs:
         run: |
           chmod +x gradlew
           ./gradlew assembleDebug --no-daemon
+      - name: Version check from the exported Gradle manifest
+        working-directory: packages/mobile/android
+        run: |
+          set -euo pipefail
+          manifest="app/build/intermediates/merged_manifests/debug/processDebugManifest/AndroidManifest.xml"
+          if [[ ! -f "$manifest" ]]; then
+            manifest="$(find app/build/intermediates -name AndroidManifest.xml -path '*debug*' -print -quit)"
+          fi
+          echo "manifest: $manifest"
+          grep -o 'android:versionCode="[0-9]*"' "$manifest"
+          grep -o 'android:versionName="[^"]*"' "$manifest"
+          grep -o 'android:label="[^"]*"' "$manifest" || true
+      - name: Verify the APK carries the Chinese resources
+        working-directory: packages/mobile/android
+        run: |
+          set -euo pipefail
+          apk="$(find app/build/outputs/apk/debug -name '*.apk' -print -quit)"
+          echo "$apk"
+          "$ANDROID_HOME/build-tools/35.0.0/aapt2" dump resources "$apk" | grep -E 'values-zh-rCN|values-zh-rTW|sealed_push_channel_name' | head -n 20
       - uses: actions/upload-artifact@v4
         with:
           name: openchamber-zh-android-debug

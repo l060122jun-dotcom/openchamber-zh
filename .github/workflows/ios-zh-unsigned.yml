@@ -54,6 +54,9 @@ jobs:
           cd packages/mobile
           bunx cap sync ios
 
+      - name: Set the fork's iOS version
+        run: python3 packages/mobile/scripts/zh-set-ios-version.py
+
       - name: Install CocoaPods
         working-directory: packages/mobile/ios/App
         run: pod install --repo-update
@@ -76,6 +79,17 @@ jobs:
             CODE_SIGN_ENTITLEMENTS="" \
             DEVELOPMENT_TEAM="" \
             -allowProvisioningUpdates=NO
+
+      - name: Verify the archived app carries the fork's icon
+        shell: bash
+        run: |
+          set -euo pipefail
+          archive="$RUNNER_TEMP/OpenChamber.xcarchive"
+          app_path="$(find "$archive/Products/Applications" -maxdepth 1 -name '*.app' -print -quit)"
+          # The script decodes the compiled CgBI icons Xcode writes and compares
+          # them to the Android baseline, so an asset-catalog icon that never made
+          # it into the archive fails the build instead of the user's device.
+          python3 packages/mobile/scripts/zh-verify-ipa-icon.py --app "$app_path"
 
       - name: Package unsigned IPA
         shell: bash
@@ -124,6 +138,10 @@ jobs:
           /usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$app/Info.plist"
           /usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$app/Info.plist" || true
           /usr/libexec/PlistBuddy -c 'Print :CFBundleVersion' "$app/Info.plist" || true
+          echo "=== localization bundles ==="
+          find "$app" -maxdepth 2 -name '*.lproj' -print | sort
+          echo "=== asset-catalog icon inside the built app ==="
+          ls -l "$app/AppIcon"*.png 2>/dev/null || true
           echo "=== nested bundles ==="
           find "$app/PlugIns" -maxdepth 1 -name '*.appex' -print 2>/dev/null || true
           echo "=== signature check (expected: unsigned) ==="
@@ -134,6 +152,25 @@ jobs:
           fi
           echo "=== sha256 ==="
           shasum -a 256 "$ipa"
+
+      - name: Verify the archived app carries the fork's icon and version
+        shell: bash
+        run: |
+          set -euo pipefail
+          archive="$RUNNER_TEMP/OpenChamber.xcarchive"
+          app_path="$(find "$archive/Products/Applications" -maxdepth 1 -name '*.app' -print -quit)"
+          python3 packages/mobile/scripts/zh-verify-ipa-icon.py --app "$app_path"
+
+      - name: Verify the archived app carries the fork's icon and version
+        shell: bash
+        run: |
+          set -euo pipefail
+          ipa="$RUNNER_TEMP/ipa/OpenChamber-unsigned.ipa"
+          version=$(unzip -p "$ipa" 'Payload/App.app/Info.plist' | /usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' /dev/stdin)
+          build=$(unzip -p "$ipa" 'Payload/App.app/Info.plist' | /usr/libexec/PlistBuddy -c 'Print :CFBundleVersion' /dev/stdin)
+          echo "IPA version $version build $build"
+          test "$version" = "2.3.2"
+          test "$build" = "232"
 
       - uses: actions/upload-artifact@v4
         with:

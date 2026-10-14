@@ -1,0 +1,106 @@
+name: Windows Chinese installer
+
+# Manual, self-contained Windows build for the Chinese fork. It never touches the
+# official release.yml, uses no release secrets, and publishes nothing: the NSIS
+# installer comes back as a workflow artifact.
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: windows-zh-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  windows-nsis:
+    name: Windows NSIS installer (Chinese)
+    runs-on: windows-2022
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: '1.4.2'
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+
+      - name: Report toolchain versions
+        shell: bash
+        run: |
+          set -euo pipefail
+          bun --version
+          node --version
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Get bundled OpenCode CLI version
+        id: opencode_cli_version
+        shell: bash
+        run: |
+          VERSION=$(node -p "require('./packages/electron/package.json').opencodeCli.version")
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+
+      - name: Cache bundled OpenCode CLI artifact
+        uses: actions/cache@v4
+        with:
+          path: packages/electron/.cache/opencode-cli
+          key: opencode-cli-${{ runner.os }}-x64-${{ steps.opencode_cli_version.outputs.version }}
+          restore-keys: |
+            opencode-cli-${{ runner.os }}-x64-
+
+      - name: Build web assets
+        working-directory: packages/electron
+        run: bun run build:web-assets
+
+      - name: Prepare bundled OpenCode CLI
+        working-directory: packages/electron
+        shell: bash
+        run: |
+          set -euo pipefail
+          bun run prepare:opencode-cli
+          bun run verify:opencode-cli
+
+      - name: Bundle main process
+        working-directory: packages/electron
+        run: bun run bundle:main
+
+      - name: Rebuild native modules
+        working-directory: packages/electron
+        shell: bash
+        env:
+          ELECTRON_BUILDER_ARCH: x64
+        run: node ./scripts/rebuild-native.mjs
+
+      - name: Build Windows installer
+        working-directory: packages/electron
+        shell: bash
+        run: |
+          set -euo pipefail
+          node ./scripts/package.mjs --win --x64 --publish=never
+          bun run verify:opencode-cli:packaged
+
+      - name: Report built files
+        shell: bash
+        working-directory: packages/electron
+        run: |
+          set -euo pipefail
+          ls -l dist/
+          for f in dist/*.exe; do
+            echo "sha256 $f"
+            sha256sum "$f" || certutil -hashfile "$f" SHA256
+          done
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: openchamber-zh-windows
+          path: |
+            packages/electron/dist/*.exe
+            packages/electron/dist/*.blockmap
+          if-no-files-found: error
+          retention-days: 14
