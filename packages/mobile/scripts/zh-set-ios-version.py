@@ -6,6 +6,9 @@ Upstream's project file ships MARKETING_VERSION = 1.0 and CURRENT_PROJECT_VERSIO
 build. This rewrites both settings across all configurations so the unsigned IPA
 reports the fork's version, and it is idempotent: running it twice changes
 nothing.
+
+Each upstream release bumps the two constants below (2.3.2 -> 232, 2.5.0 -> 250);
+the iOS workflow runs this script and then asserts the archived IPA reports them.
 """
 import re
 import sys
@@ -13,8 +16,8 @@ from pathlib import Path
 
 PROJECT = Path(__file__).resolve().parents[1] / "ios" / "App" / "App.xcodeproj" / "project.pbxproj"
 
-MARKETING_VERSION = "2.3.2"
-CURRENT_PROJECT_VERSION = "232"
+MARKETING_VERSION = "2.5.0"
+CURRENT_PROJECT_VERSION = "250"
 
 
 def main() -> int:
