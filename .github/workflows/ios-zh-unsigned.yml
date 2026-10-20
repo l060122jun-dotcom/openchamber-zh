@@ -162,7 +162,7 @@ jobs:
           echo "=== sha256 ==="
           shasum -a 256 "$ipa"
 
-      - name: Verify the archived app carries the fork's icon and version
+      - name: Verify the archived app carries the fork's icon
         shell: bash
         run: |
           set -euo pipefail
@@ -170,13 +170,20 @@ jobs:
           app_path="$(find "$archive/Products/Applications" -maxdepth 1 -name '*.app' -print -quit)"
           python3 packages/mobile/scripts/zh-verify-ipa-icon.py --app "$app_path"
 
-      - name: Verify the archived app carries the fork's icon and version
+      - name: Verify the packaged IPA carries the fork's version
         shell: bash
         run: |
           set -euo pipefail
           ipa="$RUNNER_TEMP/ipa/OpenChamber-unsigned.ipa"
-          version=$(unzip -p "$ipa" 'Payload/App.app/Info.plist' | /usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' /dev/stdin)
-          build=$(unzip -p "$ipa" 'Payload/App.app/Info.plist' | /usr/libexec/PlistBuddy -c 'Print :CFBundleVersion' /dev/stdin)
+          # The app is not named App.app by contract, and PlistBuddy needs a file
+          # to read, so extract and read the real bundle instead of a pipe.
+          tmp="$RUNNER_TEMP/version-check"
+          rm -rf "$tmp"
+          mkdir -p "$tmp"
+          unzip -q "$ipa" -d "$tmp"
+          app="$(find "$tmp/Payload" -maxdepth 1 -name '*.app' -print -quit)"
+          version=$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$app/Info.plist")
+          build=$(/usr/libexec/PlistBuddy -c 'Print :CFBundleVersion' "$app/Info.plist")
           echo "IPA version $version build $build"
           test "$version" = "2.5.0"
           test "$build" = "250"
