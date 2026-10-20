@@ -5,12 +5,15 @@ import { OpenChamberControlError, asControlError } from './error.js';
 import { OPENCHAMBER_ALL_ACTIONS, OPENCHAMBER_KNOWLEDGE_ACTIONS } from './actions.js';
 import { writeScreenshot } from './screenshots.js';
 import { createProjectKnowledgeActions } from './project-knowledge.js';
+import { createPageAnswers, createRenderPageAction } from './render-page.js';
 
 const DEFAULT_WAIT_TIMEOUT_SECONDS = 600;
 const MAX_WAIT_TIMEOUT_SECONDS = 86_400;
 const WAIT_POLL_INTERVAL_MS = 500;
 // One service, both capabilities: which tool asked is the caller's concern.
 const CONTROL_ACTIONS = new Set(OPENCHAMBER_ALL_ACTIONS);
+// models.search ranks a favorite 2 and a recent model 1.
+const PREFERENCE_BY_RANK = { 2: 'favorite', 1: 'recent' };
 const SCHEDULE_TASK_ID_ACTIONS = new Set([
   'schedule.update',
   'schedule.run',
@@ -222,6 +225,10 @@ export const createOpenChamberControlService = (dependencies) => {
     projectContextRuntime = null,
     resolveProjectContextId = null,
     isKnowledgeToolEnabled = async () => true,
+    isRenderToolEnabled = async () => true,
+    // Hears when a page an agent shows starts and stops waiting for the
+    // user's answer (render.page with awaitAnswer).
+    onPageWaitChange = () => {},
     // Puts a plan in front of the user; answers how many windows it reached.
     showPlan = null,
     // Delivers a dispatched session's result back to the session that asked
@@ -309,6 +316,9 @@ export const createOpenChamberControlService = (dependencies) => {
     resolveDirectory: (input) => sessionService.resolveDirectory(input),
   });
 
+  const pageAnswers = createPageAnswers({ onWaitChange: onPageWaitChange });
+  const renderPage = createRenderPageAction({ isEnabled: isRenderToolEnabled, pageAnswers });
+
   const models = async () => {
     const settings = await readSettingsFromDiskMigrated();
     return {
@@ -317,6 +327,73 @@ export const createOpenChamberControlService = (dependencies) => {
       defaultAgent: asNonEmptyString(settings?.defaultAgent),
       favoriteModels: Array.isArray(settings?.favoriteModels) ? settings.favoriteModels : [],
       recentModels: Array.isArray(settings?.recentModels) ? settings.recentModels : [],
+    };
+  };
+
+  /**
+   * `models.search`: the catalog of the caller's directory, the way the model
+   * picker sees it. Models the user hid in the picker stay out, favorites and
+   * then recent models come first, and only the newest of a family shows
+   * unless `all` asks for older versions. OpenCode's own `models` tool is
+   * removed from the agent's list in favour of this one.
+   */
+  const searchModels = async (input, contextDirectory) => {
+    const client = await getClient(asNonEmptyString(input.directory) || asNonEmptyString(contextDirectory) || '');
+    const [settings, catalog, providerList] = await Promise.all([
+      readSettingsFromDiskMigrated(),
+      client.model.list(),
+      client.provider.list(),
+    ]);
+    const providerNames = new Map(providerList.data.map((provider) => [provider.id, provider.name]));
+    const refKey = (ref) => `${ref?.providerID}/${ref?.modelID}`;
+    const modelKey = (model) => `${model.providerID}/${model.id}`;
+    const refs = (value) => new Set((Array.isArray(value) ? value : []).map(refKey));
+    const hidden = refs(settings?.hiddenModels);
+    // 2 for a favorite, 1 for a recent model, absent for the rest.
+    const rank = new Map([
+      ...[...refs(settings?.recentModels)].map((key) => [key, 1]),
+      ...[...refs(settings?.favoriteModels)].map((key) => [key, 2]),
+    ]);
+    const provider = asNonEmptyString(input.provider)?.toLowerCase();
+    const terms = (asNonEmptyString(input.query) ?? '').toLowerCase().split(/\s+/).filter(Boolean);
+    const shownFamilies = new Set();
+    const matching = catalog.data
+      .filter((model) => !hidden.has(modelKey(model)))
+      .filter((model) => !provider
+        || model.providerID.toLowerCase() === provider
+        || providerNames.get(model.providerID)?.toLowerCase() === provider)
+      .filter((model) => {
+        const text = `${modelKey(model)} ${model.name}`.toLowerCase();
+        return terms.every((term) => text.includes(term));
+      })
+      .toSorted((left, right) => (rank.get(modelKey(right)) ?? 0) - (rank.get(modelKey(left)) ?? 0)
+        || left.providerID.localeCompare(right.providerID)
+        || right.time.released - left.time.released)
+      // Newest first within a provider, so the first of a family is its newest.
+      .filter((model) => {
+        if (input.all === true || !model.family || rank.has(modelKey(model))) return true;
+        const family = `${model.providerID}/${model.family}`;
+        if (shownFamilies.has(family)) return false;
+        shownFamilies.add(family);
+        return true;
+      });
+    const offset = Number.isSafeInteger(input.offset) && input.offset > 0 ? input.offset : 0;
+    const limit = Number.isSafeInteger(input.limit) && input.limit > 0 ? Math.min(input.limit, 100) : 10;
+    const page = matching.slice(offset, offset + limit);
+    return {
+      models: page.map((model) => ({
+        id: modelKey(model),
+        name: model.name,
+        provider: providerNames.get(model.providerID) ?? model.providerID,
+        // Absent for a model the user has not picked; JSON drops the undefined.
+        preference: PREFERENCE_BY_RANK[rank.get(modelKey(model))],
+        released: model.time.released,
+        variants: model.variants.map((variant) => variant.id),
+        cost: model.cost,
+        status: model.status,
+      })),
+      total: matching.length,
+      next: offset + limit < matching.length ? offset + limit : null,
     };
   };
 
@@ -742,6 +819,14 @@ export const createOpenChamberControlService = (dependencies) => {
         }
         return result.body;
       }
+      if (action === 'render.page') {
+        return await renderPage(input, {
+          sessionId: asNonEmptyString(options.contextSessionId),
+          callId: asNonEmptyString(options.contextCallId),
+          directory: asNonEmptyString(contextDirectory),
+          signal: options.signal,
+        });
+      }
       if (action === 'file.open') {
         if (!fileOpen) {
           throw new OpenChamberControlError('The file viewer is not available on this server', 503);
@@ -754,6 +839,7 @@ export const createOpenChamberControlService = (dependencies) => {
       }
       if (action === 'projects.list') return { projects: await projects() };
       if (action === 'models.list') return models();
+      if (action === 'models.search') return searchModels(input, contextDirectory);
       if (action === 'schedule.status') return scheduledTaskService.status();
       if (action.startsWith('schedule.')) {
         const taskID = asNonEmptyString(input.taskId);
@@ -829,8 +915,11 @@ export const createOpenChamberControlService = (dependencies) => {
         if (branch) worktree.branchName = branch.trim();
         const startRef = asNonEmptyString(input.startRef);
         if (startRef) worktree.startRef = startRef.trim();
+        const existingBranch = asNonEmptyString(input.existingBranch);
+        if (existingBranch) worktree.existingBranch = existingBranch.trim();
         const payload = { worktree };
         if (directory) payload.directory = directory;
+        if (input.carry !== undefined) payload.carry = input.carry;
         return sessionService.moveToWorktree(sessionID, payload);
       }
       if (action.startsWith('session.')) {
@@ -913,5 +1002,7 @@ export const createOpenChamberControlService = (dependencies) => {
   // The managed agent-tool plugin can no longer report the session's directory
   // (v2 dropped `context.directory` from a tool call), so it sends the session
   // id and the directory is resolved here, where it is authoritative.
-  return { execute, resolveSessionDirectory };
+  // `answerPage` is the chat's side of a page that waits (render.page with
+  // awaitAnswer).
+  return { execute, resolveSessionDirectory, answerPage: pageAnswers.answer };
 };

@@ -8,7 +8,7 @@ import { useProjectsStore } from '@/stores/useProjectsStore';
 import { useUIStore } from '@/stores/useUIStore';
 import type { MultiRunSummary } from '@/lib/multirun/runs';
 import type { SessionNode } from '../types';
-import { isTwoLineTimelineContext, type SessionSidebarRenderContext } from '../sessionSidebarRowModel';
+import { isMultiLineTimelineContext, type SessionSidebarRenderContext } from '../sessionSidebarRowModel';
 import { formatSessionCompactDateLabel } from '../utils';
 import { CollapsedSessionActivityIndicator } from './collapsedActivityIndicator';
 import { SessionTimelineRowBody } from './SessionTimelineRowBody';
@@ -65,18 +65,22 @@ function RunSidebarRowComponent({
   const isActive = useUIStore((state) => state.runOverviewKey === run.key);
   // The Tree view's Pinned and In work rows are flat too, on one line.
   const isOneLineRow = renderContext === 'mixed-compact';
-  const isTimelineRow = isTwoLineTimelineContext(renderContext) || isOneLineRow;
-  // Only Pinned and In work mix projects; under a project header the row needs no icon.
+  const isTimelineRow = isMultiLineTimelineContext(renderContext) || isOneLineRow;
+  // The list by time names the project on a first line of its own.
+  const hasProjectLine = renderContext === 'timeline-by-time';
+  // Only Pinned, In work and the list by time mix projects; under a project
+  // header the row needs no icon.
   const timelineProject = useProjectsStore(React.useCallback((state) => (
-    renderContext === 'timeline-mixed' && projectId ? state.projects.find((entry) => entry.id === projectId) ?? null : null
-  ), [renderContext, projectId]));
+    (renderContext === 'timeline-mixed' || hasProjectLine) && projectId ? state.projects.find((entry) => entry.id === projectId) ?? null : null
+  ), [hasProjectLine, renderContext, projectId]));
   const laneCount = run.lanes.length;
   const laneCountLabel = laneCount === 1
     ? t('sessions.sidebar.run.laneCountSingle', { count: laneCount })
     : t('sessions.sidebar.run.laneCountPlural', { count: laneCount });
   const activityNodes = React.useMemo(() => [...laneNodes], [laneNodes]);
   const activity = <CollapsedSessionActivityIndicator nodes={activityNodes} blockingSessionIds={blockingSessionIds} includeUnreadSubtasks={notifyOnSubtasks} />;
-  const titleClassName = isActive ? 'text-interactive-selection-foreground' : 'text-foreground/80';
+  // Muted like an idle session title; the run's state shows in its mark.
+  const titleClassName = isActive ? 'text-interactive-selection-foreground' : 'text-muted-foreground';
   const openOverview = () => useUIStore.getState().setRunOverviewKey(run.key);
 
   // Timeline rows read like the session rows around them: the title with its
@@ -89,17 +93,21 @@ function RunSidebarRowComponent({
         aria-current={isActive ? 'page' : undefined}
         aria-label={t('sessions.sidebar.run.openOverviewAria', { title: run.title })}
         onClick={openOverview}
-        style={{ paddingInlineStart: TIMELINE_ROW_LEFT_PX }}
+        // The Tree view's one-line rows keep the tree slot for their state,
+        // like the session rows beside them; List rows stay flat.
+        style={{ paddingInlineStart: isOneLineRow ? sessionTreeRowPaddingLeft(depth) : TIMELINE_ROW_LEFT_PX }}
         className={cn(
           'group relative my-0.5 flex w-full cursor-pointer items-center rounded-md pe-2.5 text-start focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
-          isOneLineRow ? 'py-1' : 'py-1.5',
+          isOneLineRow ? 'gap-1.5 py-1' : 'py-1.5',
           isActive ? 'bg-interactive-selection/70 text-interactive-selection-foreground' : 'hover:bg-interactive-hover/60',
         )}
       >
+        {isOneLineRow ? <span className="inline-flex h-3.5 w-3.5 flex-shrink-0 items-center justify-center">{activity}</span> : null}
         <SessionTimelineRowBody
           compact={isOneLineRow}
           project={timelineProject}
           projectLabel={projectLabel}
+          projectLine={hasProjectLine}
           title={run.title}
           titleClassName={titleClassName}
           branchLabel={null}
@@ -109,7 +117,7 @@ function RunSidebarRowComponent({
               <span className="min-w-0 truncate typography-micro text-muted-foreground/50">{laneCountLabel}</span>
             </>
           )}
-          statusDot={activity}
+          statusDot={isOneLineRow ? null : activity}
           pinnedMarker={null}
           timeSlot={formatSessionCompactDateLabel(run.lastActivity)}
           directoryIndicator={null}

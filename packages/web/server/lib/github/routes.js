@@ -435,6 +435,17 @@ export function registerGitHubRoutes(app, options = {}) {
     bindingRevision: Number(req.query?.bindingRevision),
     primaryRemote: req.query?.primaryRemote,
   });
+  // Like the single route, only a GitHub binding is ever accepted here,
+  // whatever provider the request names.
+  const validateAcrossReadContext = (context) => options.validateReadContext?.({
+    directory: context.directory,
+    repositoryId: context.repositoryId,
+    provider: 'github',
+    instance: context.instance,
+    accountId: context.accountId,
+    bindingRevision: context.bindingRevision,
+    primaryRemote: context.primaryRemote,
+  });
   const isReadContextError = (error) => error?.code?.startsWith('SOURCE_CONTROL_BINDING_')
     || error?.code?.startsWith('SOURCE_CONTROL_LOCK_')
     || error?.code === 'INVALID_SOURCE_CONTROL_READ_CONTEXT'
@@ -464,6 +475,11 @@ export function registerGitHubRoutes(app, options = {}) {
     return value;
   };
   const ISSUE_KINDS = new Set(['issue-comment', 'issue-state', 'issue-labels']);
+  // A review thread's GraphQL node id, such as `PRRT_kwDOA...`.
+  const reviewThreadId = (value) => {
+    if (!isProviderString(value) || !/^[A-Za-z0-9_=-]{1,200}$/.test(value)) throw canonicalMutationError('threadId is invalid');
+    return value;
+  };
   // Labels or reviewers as one whole set, so a repeat asks for the same result.
   const nameList = (value, name, limit) => {
     if (!Array.isArray(value) || value.length > limit
@@ -553,7 +569,12 @@ export function registerGitHubRoutes(app, options = {}) {
   const reconcileExistingMutation = async (octokit, kind, target, operation) => {
     // A comment or a review leaves nothing that tells a lost write from one
     // never sent short of guessing from its text, so the outcome stays unknown.
-    if (kind === 'comment' || kind === 'review' || kind === 'issue-comment') return { state: 'outcome-unknown' };
+    if (kind === 'comment' || kind === 'review' || kind === 'issue-comment' || kind === 'thread-reply') return { state: 'outcome-unknown' };
+    if (kind === 'thread-resolve') {
+      // Someone may have flipped it since: only the asked state is certain.
+      const thread = await readReviewThread(octokit, operation.threadId, target.project, target.number);
+      return thread.isResolved === operation.resolved ? { state: 'succeeded', result: {} } : { state: 'outcome-unknown' };
+    }
     if (kind === 'labels' || kind === 'issue-labels') {
       const current = await octokit.rest.issues.listLabelsOnIssue({
         owner: target.project.owner, repo: target.project.name, issue_number: target.number, per_page: 100,
@@ -628,6 +649,61 @@ export function registerGitHubRoutes(app, options = {}) {
     if (!isPlainObject(response?.data) || !Number.isSafeInteger(response.data.id)) {
       throw invalidProviderPayload('GitHub returned an invalid comment');
     }
+    return {};
+  };
+  // A GraphQL write GitHub refused answers with errors, not a status: that is
+  // a definite refusal with GitHub's own reason.
+  const graphqlRejection = (error) => {
+    const message = Array.isArray(error?.errors) ? error.errors.find((entry) => isProviderString(entry?.message))?.message : undefined;
+    return message ? canonicalMutationError(message, 'SOURCE_CONTROL_MUTATION_REJECTED', 422) : providerRejection(error);
+  };
+  const REVIEW_THREAD_QUERY = `query($id: ID!) {
+  node(id: $id) {
+    __typename
+    ... on PullRequestReviewThread { isResolved pullRequest { number repository { name owner { login } } } }
+  }
+}`;
+  /** The review thread `threadId` names, and only one on the target pull request: an id from elsewhere is refused. */
+  const readReviewThread = async (octokit, threadId, project, number) => {
+    let data;
+    try {
+      data = await octokit.graphql(REVIEW_THREAD_QUERY, { id: threadId });
+    } catch (error) {
+      if (!Array.isArray(error?.errors)) throw error;
+      data = error.data;
+    }
+    const node = data?.node;
+    const repository = node?.pullRequest?.repository;
+    if (node?.__typename !== 'PullRequestReviewThread' || node.pullRequest.number !== number
+      || !isProviderString(repository?.owner?.login) || !isProviderString(repository?.name)
+      || repository.owner.login.toLowerCase() !== project.owner.toLowerCase()
+      || repository.name.toLowerCase() !== project.name.toLowerCase()) {
+      throw canonicalMutationError('Review thread is not on this pull request', 'SOURCE_CONTROL_MUTATION_TARGET_INVALID', 409);
+    }
+    return node;
+  };
+  const replyToReviewThread = async (octokit, threadId, body) => {
+    let data;
+    try {
+      data = await octokit.graphql(
+        'mutation($threadId: ID!, $body: String!) { addPullRequestReviewThreadReply(input: { pullRequestReviewThreadId: $threadId, body: $body }) { comment { id } } }',
+        { threadId, body },
+      );
+    } catch (error) {
+      throw graphqlRejection(error);
+    }
+    if (!isProviderString(data?.addPullRequestReviewThreadReply?.comment?.id)) throw invalidProviderPayload('GitHub returned an invalid reply');
+    return {};
+  };
+  const setReviewThreadResolved = async (octokit, threadId, resolved) => {
+    const field = resolved ? 'resolveReviewThread' : 'unresolveReviewThread';
+    let data;
+    try {
+      data = await octokit.graphql(`mutation($threadId: ID!) { ${field}(input: { threadId: $threadId }) { thread { isResolved } } }`, { threadId });
+    } catch (error) {
+      throw graphqlRejection(error);
+    }
+    if (data?.[field]?.thread?.isResolved !== resolved) throw invalidProviderPayload('GitHub returned an invalid thread state');
     return {};
   };
   const setLabels = async (octokit, project, number, labels) => {
@@ -763,6 +839,17 @@ export function registerGitHubRoutes(app, options = {}) {
     if (kind === 'comment' || kind === 'issue-comment') {
       const body = commentText(req.body?.body, true);
       return { body, digest: (target) => digestMutationInput({ kind, actor, credential, target, body }) };
+    }
+    if (kind === 'thread-reply') {
+      const threadId = reviewThreadId(req.body?.threadId);
+      const body = commentText(req.body?.body, true);
+      return { threadId, body, digest: (target) => digestMutationInput({ kind, actor, credential, target, threadId, body }) };
+    }
+    if (kind === 'thread-resolve') {
+      const threadId = reviewThreadId(req.body?.threadId);
+      const resolved = req.body?.resolved;
+      if (resolved !== true && resolved !== false) throw canonicalMutationError('resolved is invalid');
+      return { threadId, resolved, digest: (target) => digestMutationInput({ kind, actor, credential, target, threadId, resolved }) };
     }
     if (kind === 'review') {
       const verdict = req.body?.verdict;
@@ -1020,6 +1107,12 @@ export function registerGitHubRoutes(app, options = {}) {
         } else if (kind === 'comment') {
           perform = () => postComment(octokit, expectedProject, target.number, operation.body);
           reconcile = () => reconcileExistingMutation(octokit, kind, target);
+        } else if (kind === 'thread-reply' || kind === 'thread-resolve') {
+          await readReviewThread(octokit, operation.threadId, expectedProject, target.number);
+          perform = kind === 'thread-reply'
+            ? () => replyToReviewThread(octokit, operation.threadId, operation.body)
+            : () => setReviewThreadResolved(octokit, operation.threadId, operation.resolved);
+          reconcile = () => reconcileExistingMutation(octokit, kind, target, operation);
         } else if (kind === 'review') {
           const { verdict, body } = operation;
           perform = async () => {
@@ -1786,6 +1879,10 @@ export function registerGitHubRoutes(app, options = {}) {
 
   app.post(canonicalGitHubRoutePath('/pr/review'), (req, res) => runCanonicalMutation('review', req, res));
 
+  app.post(canonicalGitHubRoutePath('/pr/thread/reply'), (req, res) => runCanonicalMutation('thread-reply', req, res));
+
+  app.post(canonicalGitHubRoutePath('/pr/thread/resolve'), (req, res) => runCanonicalMutation('thread-resolve', req, res));
+
   app.post(canonicalGitHubRoutePath('/issues/comment'), (req, res) => runCanonicalMutation('issue-comment', req, res));
 
   app.post(canonicalGitHubRoutePath('/pr/state'), (req, res) => runCanonicalMutation('state', req, res));
@@ -2020,6 +2117,86 @@ export function registerGitHubRoutes(app, options = {}) {
       }
       console.error('Failed to search GitHub references:', error);
       return res.status(500).json({ error: error.message || 'Failed to search GitHub issues and pull requests' });
+    }
+  });
+
+  app.post(canonicalGitHubRoutePath('/references/across'), async (req, res) => {
+    const { readReferencesAcrossRequest, mapReferencesAcross, searchGitHubReferencesAcross } = await import('./reference-search.js');
+    const input = readReferencesAcrossRequest(req.body);
+    if (!input) return res.status(400).json({ error: 'Invalid references request; at most 100 unique contexts are allowed' });
+    if (!options.validateReadContext) return res.status(501).json({ error: 'Bound source control read is unavailable' });
+    const { isGitHubRateLimited, isGitHubRateLimitError, noteGitHubRateLimit } = await import('./rate-limit.js');
+    const { isGraphqlRateLimitError } = await import('./pr-summaries.js');
+    if (isGitHubRateLimited()) return res.status(503).json({ error: 'GitHub rate limited' });
+    const folderFailure = async (error) => {
+      if (isGraphqlRateLimitError(error) || isGitHubRateLimitError(error)) {
+        noteGitHubRateLimit(error);
+        throw error;
+      }
+      if (error?.status === 401) {
+        await invalidateRequestAccount(error);
+        return 'disconnected';
+      }
+      // The folder's bound account is gone or unreadable: only its folders go, as with a 401.
+      if (error?.sourceControlAccountUnavailable) return 'disconnected';
+      if (isReadContextError(error)) return 'invalid-context';
+      console.error('Failed to search GitHub references across repositories:', { status: error?.status, code: error?.code, name: error?.name });
+      return 'error';
+    };
+    try {
+      const resolveGitHubRepoFromDirectory = options.resolveGitHubRepoFromDirectory
+        ?? (await import('./index.js')).resolveGitHubRepoFromDirectory;
+      const resolveRepoNetwork = options.resolveRepoNetwork
+        ?? (await import('./repo/fork-detection.js')).resolveRepoNetwork;
+      const folders = await mapReferencesAcross(input.contexts, async (context) => {
+        const directory = context.directory;
+        try {
+          const trustedContext = await validateAcrossReadContext(context);
+          if (!trustedContext) return { directory, status: 'invalid-context' };
+          const octokit = (await getOctokitForRead(req, trustedContext))?.octokit;
+          if (!octokit) return { directory, status: 'disconnected' };
+          const { repo } = await resolveGitHubRepoFromDirectory(directory, trustedContext.primaryRemote);
+          if (!repo) return { directory, status: 'no-repo' };
+          const network = await resolveRepoNetwork(octokit, directory, trustedContext.primaryRemote, { strictErrors: true });
+          const repos = requireGitHubRepoNetwork(network, repo) ?? [{ ...repo, source: 'origin' }];
+          return { directory, status: 'included', repo, repos, octokit, trustedContext };
+        } catch (error) {
+          return { directory, status: await folderFailure(error) };
+        }
+      });
+      const accounts = new Map();
+      for (const folder of folders) {
+        if (folder.status !== 'included') continue;
+        // One search per host account: repositories read with different accounts never share a query.
+        const { accountId, instance } = folder.trustedContext;
+        const groupKey = JSON.stringify([instance ?? '', accountId]);
+        if (!accounts.has(groupKey)) accounts.set(groupKey, { accountId, octokit: folder.octokit, folders: [], authority: [], repositories: new Map() });
+        const group = accounts.get(groupKey);
+        group.folders.push(folder);
+        group.authority.push(folder.trustedContext);
+        for (const repo of folder.repos) {
+          const key = `${repo.owner.toLowerCase()}/${repo.repo.toLowerCase()}`;
+          if (!group.repositories.has(key)) group.repositories.set(key, { ...repo, directory: folder.directory });
+        }
+      }
+      const groups = [...accounts.values()].map((group) => ({ ...group, repos: [...group.repositories.values()] }));
+      const page = await searchGitHubReferencesAcross({
+        groups, kind: input.kind, state: input.state ?? 'open', people: input.people ?? 'any',
+        text: input.query?.trim() ?? '', cursor: input.cursor || null,
+        onGroupError: async (group, error) => {
+          const status = await folderFailure(error);
+          for (const folder of group.folders) folder.status = status;
+        },
+      });
+      const repositories = new Map(folders.map((folder) => [folder.directory, folder.status === 'included'
+        ? { directory: folder.directory, status: 'included', repo: folder.repo }
+        : { directory: folder.directory, status: folder.status }]));
+      return res.json({ ...page, repositories: input.directories.map((directory) => repositories.get(directory)) });
+    } catch (error) {
+      if (error?.code === 'INVALID_REFERENCES_CURSOR') return res.status(400).json({ error: error.message });
+      if (isGraphqlRateLimitError(error) || isGitHubRateLimitError(error)) return res.status(503).json({ error: 'GitHub rate limited' });
+      console.error('Failed to search GitHub references across repositories:', { status: error?.status, code: error?.code, name: error?.name });
+      return res.status(500).json({ error: 'Failed to search GitHub issues and pull requests' });
     }
   });
 

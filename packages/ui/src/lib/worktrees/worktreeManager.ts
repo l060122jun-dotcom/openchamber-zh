@@ -14,6 +14,7 @@ import {
 } from '@/lib/worktrees/worktreeBootstrap';
 import { invalidateResolvedProjectRootCache, resolveProjectRoot } from '@/lib/worktrees/worktreeStatus';
 import { clearWorktreeRemoval, markWorktreeRemoving } from '@/lib/worktrees/worktreeRemovalState';
+import { checkoutHoldsSubfolder } from '@/lib/worktrees/worktreePaths';
 import type {
   CreateGitWorktreePayload,
   GitWorktreeBootstrapStatus,
@@ -312,12 +313,6 @@ export const worktreeMapsEqual = (
     }
   }
   return true;
-};
-
-/** True when `directory` lies inside `checkoutPath`. Both paths are normalized. */
-export const checkoutHoldsSubfolder = (checkoutPath: string, directory: string): boolean => {
-  const prefix = checkoutPath.endsWith('/') ? checkoutPath : `${checkoutPath}/`;
-  return directory.startsWith(prefix);
 };
 
 /**
@@ -659,6 +654,13 @@ export async function createWorktree(project: ProjectRef, args: CreateWorktreeAr
     toast.warning(formatMessage(
       useI18nStore.getState().dictionary,
       created.sourceFetchReason === 'access' ? 'session.newWorktree.toast.fetchSourceAccess' : 'session.newWorktree.toast.fetchSourceFailed',
+    ));
+  }
+  if (created?.branchBackup) {
+    toast.info(formatMessage(
+      useI18nStore.getState().dictionary,
+      'session.newWorktree.toast.branchBackup',
+      { branch: created.branch, backup: created.branchBackup },
     ));
   }
   const returnedName = typeof created?.name === 'string' ? created.name : '';

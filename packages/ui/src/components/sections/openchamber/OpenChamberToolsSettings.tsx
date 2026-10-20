@@ -41,7 +41,7 @@ const TOOL_ROW_TEXT_INSET_CLASS = 'ps-[3.75rem]';
 const ToolRow: React.FC<ToolRowProps> = ({ icon, title, summary, info, ariaLabel, checked, onChange, settingsItem }) => (
   <div data-settings-item={settingsItem} className="flex items-center gap-3 px-4 py-3">
     {/* The switch alone says "off": dimming the row would read as disabled. */}
-    <span className="flex size-8 shrink-0 items-center justify-center rounded-lg bg-[var(--surface-muted)] text-foreground">
+    <span className="flex size-8 shrink-0 items-center justify-center oc-tile-inset rounded-lg text-foreground">
       <Icon name={icon} className="size-4" />
     </span>
     <div className="min-w-0 flex-1">
@@ -76,6 +76,8 @@ export const OpenChamberToolsSettings: React.FC = () => {
   const { t } = useI18n();
   const agentControlToolEnabled = useUIStore((state) => state.agentControlToolEnabled);
   const setAgentControlToolEnabled = useUIStore((state) => state.setAgentControlToolEnabled);
+  const agentScheduleToolEnabled = useUIStore((state) => state.agentScheduleToolEnabled);
+  const setAgentScheduleToolEnabled = useUIStore((state) => state.setAgentScheduleToolEnabled);
   const agentWebToolEnabled = useUIStore((state) => state.agentWebToolEnabled);
   const setAgentWebToolEnabled = useUIStore((state) => state.setAgentWebToolEnabled);
   const browserProvider = useUIStore((state) => state.browserProvider);
@@ -90,22 +92,20 @@ export const OpenChamberToolsSettings: React.FC = () => {
   const setAgentKnowledgeToolEnabled = useUIStore((state) => state.setAgentKnowledgeToolEnabled);
   const agentNotifyToolEnabled = useUIStore((state) => state.agentNotifyToolEnabled);
   const setAgentNotifyToolEnabled = useUIStore((state) => state.setAgentNotifyToolEnabled);
+  const agentRenderToolEnabled = useUIStore((state) => state.agentRenderToolEnabled);
+  const setAgentRenderToolEnabled = useUIStore((state) => state.setAgentRenderToolEnabled);
   const agentToolsCodeMode = useUIStore((state) => state.agentToolsCodeMode);
   const setAgentToolsCodeMode = useUIStore((state) => state.setAgentToolsCodeMode);
-  const agentWorktreeMoveWithoutAsking = useUIStore((state) => state.agentWorktreeMoveWithoutAsking);
-  const setAgentWorktreeMoveWithoutAsking = useUIStore((state) => state.setAgentWorktreeMoveWithoutAsking);
 
   const handleAgentControlToolChange = React.useCallback((enabled: boolean) => {
     setAgentControlToolEnabled(enabled);
     void updateDesktopSettings({ agentControlToolEnabled: enabled });
   }, [setAgentControlToolEnabled]);
 
-  // Read into the tool's description by the server, which rewrites the plugin
-  // the running OpenCode watches; the agent reads the new rule on its next turn.
-  const handleAgentWorktreeMoveChange = React.useCallback((enabled: boolean) => {
-    setAgentWorktreeMoveWithoutAsking(enabled);
-    void updateDesktopSettings({ agentWorktreeMoveWithoutAsking: enabled });
-  }, [setAgentWorktreeMoveWithoutAsking]);
+  const handleAgentScheduleToolChange = React.useCallback((enabled: boolean) => {
+    setAgentScheduleToolEnabled(enabled);
+    void updateDesktopSettings({ agentScheduleToolEnabled: enabled });
+  }, [setAgentScheduleToolEnabled]);
 
   const handleAgentWebToolChange = React.useCallback((enabled: boolean) => {
     setAgentWebToolEnabled(enabled);
@@ -116,6 +116,11 @@ export const OpenChamberToolsSettings: React.FC = () => {
     setAgentNotifyToolEnabled(enabled);
     void updateDesktopSettings({ agentNotifyToolEnabled: enabled });
   }, [setAgentNotifyToolEnabled]);
+
+  const handleAgentRenderToolChange = React.useCallback((enabled: boolean) => {
+    setAgentRenderToolEnabled(enabled);
+    void updateDesktopSettings({ agentRenderToolEnabled: enabled });
+  }, [setAgentRenderToolEnabled]);
 
   const handleAgentKnowledgeToolChange = React.useCallback((enabled: boolean) => {
     setAgentKnowledgeToolEnabled(enabled);
@@ -164,34 +169,28 @@ export const OpenChamberToolsSettings: React.FC = () => {
 
   return (
     <SettingsSection title={t('settings.openchamber.tools.title')}>
-      <div className="max-w-[44rem] divide-y divide-[var(--interactive-border)] rounded-xl border border-[var(--interactive-border)] bg-[var(--surface-elevated)]">
-        {/* One group, so no divider separates the control tool from its own setting. */}
-        <div>
-          <ToolRow
-            icon="node-tree"
-            settingsItem="sessions.agent-control-tool"
-            checked={agentControlToolEnabled}
-            onChange={handleAgentControlToolChange}
-            title={t('settings.openchamber.tools.field.agentControlTool')}
-            summary={t('settings.openchamber.tools.field.agentControlToolSummary')}
-            info={t('settings.openchamber.tools.field.agentControlToolInfo')}
-            ariaLabel={t('settings.openchamber.tools.field.agentControlToolAria')}
-          />
+      <div className="max-w-[44rem] oc-tile divide-y divide-[var(--interactive-border)] rounded-xl">
+        <ToolRow
+          icon="node-tree"
+          settingsItem="sessions.agent-control-tool"
+          checked={agentControlToolEnabled}
+          onChange={handleAgentControlToolChange}
+          title={t('settings.openchamber.tools.field.agentControlTool')}
+          summary={t('settings.openchamber.tools.field.agentControlToolSummary')}
+          info={t('settings.openchamber.tools.field.agentControlToolInfo')}
+          ariaLabel={t('settings.openchamber.tools.field.agentControlToolAria')}
+        />
 
-          {/* Only with the tool: without it there is no move to decide about. */}
-          {agentControlToolEnabled ? (
-            <div className={cn('pb-3 pe-4', TOOL_ROW_TEXT_INSET_CLASS)}>
-              <SettingsCheckboxRow
-                settingsItem="sessions.agent-worktree-move"
-                checked={agentWorktreeMoveWithoutAsking}
-                onChange={handleAgentWorktreeMoveChange}
-                label={t('settings.openchamber.tools.field.agentWorktreeMove')}
-                ariaLabel={t('settings.openchamber.tools.field.agentWorktreeMoveAria')}
-                info={t('settings.openchamber.tools.field.agentWorktreeMoveInfo')}
-              />
-            </div>
-          ) : null}
-        </div>
+        <ToolRow
+          icon="calendar-schedule"
+          settingsItem="sessions.agent-schedule-tool"
+          checked={agentScheduleToolEnabled}
+          onChange={handleAgentScheduleToolChange}
+          title={t('settings.openchamber.tools.field.agentScheduleTool')}
+          summary={t('settings.openchamber.tools.field.agentScheduleToolSummary')}
+          info={t('settings.openchamber.tools.field.agentScheduleToolInfo')}
+          ariaLabel={t('settings.openchamber.tools.field.agentScheduleToolAria')}
+        />
 
         {/* One group, so no divider separates the web tool from its own setting. */}
         <div>
@@ -254,6 +253,17 @@ export const OpenChamberToolsSettings: React.FC = () => {
           summary={t('settings.openchamber.tools.field.agentNotifyToolSummary')}
           info={t('settings.openchamber.tools.field.agentNotifyToolInfo')}
           ariaLabel={t('settings.openchamber.tools.field.agentNotifyToolAria')}
+        />
+
+        <ToolRow
+          icon="bar-chart-box"
+          settingsItem="sessions.agent-render-tool"
+          checked={agentRenderToolEnabled}
+          onChange={handleAgentRenderToolChange}
+          title={t('settings.openchamber.tools.field.agentRenderTool')}
+          summary={t('settings.openchamber.tools.field.agentRenderToolSummary')}
+          info={t('settings.openchamber.tools.field.agentRenderToolInfo')}
+          ariaLabel={t('settings.openchamber.tools.field.agentRenderToolAria')}
         />
 
         <ToolRow

@@ -41,6 +41,8 @@ import { useHardwareKeyboard } from '@/lib/hardwareKeyboard';
 import { useI18n } from '@/lib/i18n';
 import { subscribeOpenchamberEvents } from '@/lib/openchamberEvents';
 import { getRuntimeApiBaseUrl, subscribeRuntimeEndpointChanged, switchRuntimeEndpoint, MOBILE_DISCONNECTED_RUNTIME_KEY } from '@/lib/runtime-switch';
+import { subscribeActiveRelayTunnelStatus } from '@/lib/relay/runtime-tunnel';
+import { isRelayLimitReached } from '@/lib/relay/tunnel-client';
 import { useGlobalSessionsStore } from '@/stores/useGlobalSessionsStore';
 import { useAuthoritativeSessionCleanup } from '@/components/session/sidebar/list/useAuthoritativeSessionCleanup';
 import { restoreLastActiveSession } from '@/sync/last-session-restore';
@@ -65,7 +67,7 @@ import { useSessionUIStore } from '@/sync/session-ui-store';
 import { SyncProvider } from '@/sync/sync-context';
 
 import { SyncAppEffects } from './AppEffects';
-import { BusyDots } from '@/components/chat/message/parts/BusyDots';
+import { BusyDots } from '@/components/ui/busy-dots';
 import { MobileConnectionWelcome, type MobileConnectionNotice } from './MobileConnectionWelcome';
 import { MobileHeader } from './MobileHeader';
 import { MobileInstancesSurface } from './MobileInstancesSurface';
@@ -75,7 +77,8 @@ import { UsageStatsView } from '@/components/views/usage/UsageStatsView';
 import { ArchiveSessionsView } from '@/components/views/ArchiveView';
 import { MobileSourceBoard } from '@/components/sourceBoard/SourceBoardView';
 import { ScheduledTasksView, type ScheduledTasksLeaveReason } from '@/components/session/ScheduledTasksDialog';
-import { MobileWorkspaceDrawer, type MobileWorkspaceTab } from './MobileWorkspaceDrawer';
+import { MobileWorkspaceDrawer } from './MobileWorkspaceDrawer';
+import { shownMobileWorkspaceTabs, type MobileWorkspaceTab } from '@/lib/mobileWorkspaceTabs';
 import { DedicatedMobileAppProvider, type MobileAppActions } from './mobileAppContext';
 import { autoConnectLastInstance, getAutoConnectTargetLabel, logMobileConnectEvent, reprobeActiveConnection, suppressAutoConnectUntilManualConnect, type AutoConnectOutcome } from './mobileConnections';
 import { isCapacitorMobileApp, useNativeAndroidBackButton, useNativeMobileChrome, useNativeMobileLifecycle } from './mobileNativeChrome';
@@ -153,6 +156,15 @@ const MobileShell: React.FC<{ onActiveConnectionDeleted: () => void }> = ({ onAc
   // open/close so the right-edge swipe reopens where the user left off.
   const [workspaceOpen, setWorkspaceOpen] = React.useState(false);
   const [workspaceTab, setWorkspaceTab] = React.useState<MobileWorkspaceTab>('changes');
+  // Opening the drawer itself lands on the last tab, unless the user has since
+  // hidden it in Settings; then on their first tab. A trigger that asks for a
+  // tab (a changed file in the chat) sets it on its own and opens it hidden or not.
+  const openWorkspace = React.useCallback(() => {
+    const { mobileWorkspaceTabOrder, mobileWorkspaceHiddenTabs } = useUIStore.getState();
+    const shown = shownMobileWorkspaceTabs(mobileWorkspaceTabOrder, mobileWorkspaceHiddenTabs);
+    setWorkspaceTab((current) => (shown.includes(current) ? current : shown[0]));
+    setWorkspaceOpen(true);
+  }, []);
   // A plan opened from the workspace drawer's Notes tab, shown as a fullscreen
   // layer on top of it (back returns to the notes).
   const [openPlan, setOpenPlan] = React.useState<{ id: string; title: string; projectRef: ProjectRef } | null>(null);
@@ -350,7 +362,7 @@ const MobileShell: React.FC<{ onActiveConnectionDeleted: () => void }> = ({ onAc
     if (isTabletLayout) setSidebarOpen(true);
     else setSessionsSheetOpen(true);
   };
-  const openWorkspaceFromEdge = () => setWorkspaceOpen(true);
+  const openWorkspaceFromEdge = () => openWorkspace();
   useEdgeSwipe(chatMainRef, {
     onLeftEdgeSwipe: direction === 'rtl' ? openWorkspaceFromEdge : openSessionsFromEdge,
     onRightEdgeSwipe: direction === 'rtl' ? openSessionsFromEdge : openWorkspaceFromEdge,
@@ -555,7 +567,7 @@ const MobileShell: React.FC<{ onActiveConnectionDeleted: () => void }> = ({ onAc
         <div className="flex h-full min-w-0 flex-1 flex-col" data-page-scroll-lock="true">
           <MobileHeader
             onOpenSessions={() => (isTabletLayout ? toggleSidebar() : setSessionsSheetOpen(true))}
-            onOpenWorkspace={() => setWorkspaceOpen(true)}
+            onOpenWorkspace={openWorkspace}
             compactTitle={isTabletLayout}
           />
           <main ref={chatMainRef} className="relative min-h-0 flex-1 overflow-hidden" data-page-scroll-lock="true">
@@ -874,6 +886,15 @@ function MobileAppContent({ apis }: MobileAppProps) {
         disconnect('needs-login');
         return;
       }
+      if (outcome === 'relay-limit') {
+        // The relay refused this device over its limits. The parked tunnel
+        // makes no attempt of its own, so the grace ladder below would only
+        // keep the user on a frozen session. The connect screen says why;
+        // tapping the instance, or the next resume/online, tries again.
+        setAutoConnectNotice({ kind: 'relay-limit', label: getAutoConnectTargetLabel() ?? '' });
+        disconnect('relay-limit');
+        return;
+      }
       if (outcome === 'unreachable') {
         // Right after a resume or Wi-Fi switch the network is often still
         // settling (Android without a SIM has NO connectivity for a few
@@ -897,6 +918,11 @@ function MobileAppContent({ apis }: MobileAppProps) {
               if (retry === 'needs-login') {
                 setAutoConnectNotice({ kind: 'auth-expired', label: getAutoConnectTargetLabel() ?? '' });
                 disconnect('retry-needs-login');
+                return;
+              }
+              if (retry === 'relay-limit') {
+                setAutoConnectNotice({ kind: 'relay-limit', label: getAutoConnectTargetLabel() ?? '' });
+                disconnect('retry-relay-limit');
                 return;
               }
               if (!lastAttempt) {
@@ -965,6 +991,18 @@ function MobileAppContent({ apis }: MobileAppProps) {
     });
   }, [isNativeMobileApp, handleNativeResume]);
 
+  // The runtime tunnel can be refused over the relay's limits on a reconnect
+  // while the app is in the foreground. It then parks without a resume to
+  // wake it, and the shell would sit on "reconnecting" over a frozen session.
+  // The resume re-probe settles it: a reachable LAN takes over, otherwise the
+  // connect screen explains the refusal.
+  React.useEffect(() => {
+    if (!isNativeMobileApp) return;
+    return subscribeActiveRelayTunnelStatus((status) => {
+      if (isRelayLimitReached(status)) handleNativeResume();
+    });
+  }, [isNativeMobileApp, handleNativeResume]);
+
   React.useEffect(() => {
     registerRuntimeAPIs(apis);
     return () => registerRuntimeAPIs(null);
@@ -1027,8 +1065,8 @@ function MobileAppContent({ apis }: MobileAppProps) {
       if (cancelled) return;
       // Landing on the connect screen silently reads as data loss — say WHY
       // the saved instance didn't come back (unreachable vs revoked auth).
-      if (outcome.status === 'unreachable') {
-        setAutoConnectNotice({ kind: 'unreachable', label: outcome.label });
+      if (outcome.status === 'unreachable' || outcome.status === 'relay-limit') {
+        setAutoConnectNotice({ kind: outcome.status, label: outcome.label });
       } else if (outcome.status === 'needs-login') {
         setAutoConnectNotice({ kind: 'auth-expired', label: outcome.label });
       }
@@ -1039,7 +1077,8 @@ function MobileAppContent({ apis }: MobileAppProps) {
       // launch: retry once IN THE BACKGROUND with the full budget. A success
       // switches the runtime and the app moves in from the connect screen on
       // its own; a manual connect the user started meanwhile wins via
-      // skipIfConnected.
+      // skipIfConnected. A relay refusal over its limits gets no such retry:
+      // dialing again at once only counts against the same limits.
       setAutoConnectPhase('done');
       if (outcome.status === 'unreachable') {
         void autoConnectLastInstance({ fast: false, skipIfConnected: true }).catch(() => null);
@@ -1090,6 +1129,10 @@ function MobileAppContent({ apis }: MobileAppProps) {
         void autoConnectLastInstance({ fast: false, skipIfConnected: true }).catch(() => null);
         return;
       }
+      if (outcome === 'relay-limit') {
+        dropToConnectScreen({ kind: 'relay-limit', label: label ?? '' });
+        return;
+      }
       // 'no-connection': at cold start the runtime key may not map to a saved
       // connection yet — fall back to the auto-connect path, which both
       // classifies the failure and connects when everything is actually fine.
@@ -1097,8 +1140,8 @@ function MobileAppContent({ apis }: MobileAppProps) {
       if (cancelled || fallback.status === 'connected') return;
       if (fallback.status === 'needs-login') {
         dropToConnectScreen({ kind: 'auth-expired', label: fallback.label });
-      } else if (fallback.status === 'unreachable') {
-        dropToConnectScreen({ kind: 'unreachable', label: fallback.label });
+      } else if (fallback.status === 'unreachable' || fallback.status === 'relay-limit') {
+        dropToConnectScreen({ kind: fallback.status, label: fallback.label });
       } else {
         dropToConnectScreen(null);
       }
@@ -1332,7 +1375,7 @@ function MobileAppContent({ apis }: MobileAppProps) {
                   <h1 className="typography-h3 text-foreground">{t('sessionAuth.error.networkTitle')}</h1>
                   {/* Native copy — the browser-oriented sessionAuth description
                       (Desktop Network Access etc.) reads as noise here. */}
-                  <p className="typography-body text-muted-foreground">{t('mobile.connect.recovery.description')}</p>
+                  <p className="typography-markdown text-muted-foreground">{t('mobile.connect.recovery.description')}</p>
                 </div>
                 <Button
                   type="button"
@@ -1396,7 +1439,7 @@ function MobileAppContent({ apis }: MobileAppProps) {
       <main className="flex min-h-dvh items-center justify-center bg-background px-6 text-center text-foreground">
         <div className="max-w-sm space-y-3">
           <h1 className="typography-h3 text-foreground">{t('sessionAuth.error.networkTitle')}</h1>
-          <p className="typography-body text-muted-foreground">{t('sessionAuth.error.networkDescription')}</p>
+          <p className="typography-markdown text-muted-foreground">{t('sessionAuth.error.networkDescription')}</p>
         </div>
       </main>
     );

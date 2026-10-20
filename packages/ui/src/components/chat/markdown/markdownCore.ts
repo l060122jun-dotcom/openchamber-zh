@@ -7,6 +7,7 @@ import { INLINE_REFERENCE_CHIP_CLASS, INTERACTIVE_REFERENCE_CHIP_CLASS, buildAge
 import { isAppLinkUrl } from '@/lib/url';
 import { isSessionDeepLink } from '@/lib/sessionLinks';
 import { isVSCodeRuntime } from '@/lib/desktop';
+import { isInvisibleText } from '@/lib/invisibleText';
 import {
   contentFingerprint,
   EMPTY_FINGERPRINT,
@@ -28,11 +29,13 @@ import {
   isSafeSrcset,
   MARKDOWN_FORBIDDEN_TAGS,
 } from './markdownSecurity';
+import { isBareVideoUrl, isVideoSource, renderMarkdownVideo } from './markdownVideo';
 
 const escapeAttr = (value: string): string =>
   value.replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 
-const LOCAL_IMAGE_EXTENSION_RE = /\.(?:png|jpe?g|gif|webp)(?:[?#].*)?$/i;
+// A local clip is drawn in place like a local picture (inlineMarkdownImages.ts).
+const LOCAL_IMAGE_EXTENSION_RE = /\.(?:png|jpe?g|gif|webp|mp4|m4v|mov|webm)(?:[?#].*)?$/i;
 const WINDOWS_ABSOLUTE_PATH_RE = /^[A-Za-z]:[\\/]/;
 const URL_SCHEME_RE = /^[A-Za-z][A-Za-z\d+.-]*:/;
 
@@ -97,6 +100,10 @@ const renderMarkdownImageLabel = ({
   title?: string | null;
   text: string;
 }): string => {
+  // Output a model or a tool wrote may point anywhere, so its clip reads
+  // nothing until the user presses play.
+  const video = remoteVideoOf({ href, title: title ?? null, text });
+  if (video) return renderMarkdownVideo(video, 'none');
   const label = getMarkdownImageFilename(href ?? '', text);
   const titleAttr = title ? ` title="${escapeAttr(title)}"` : '';
   const remote = isRemoteMarkdownImageSource(href ?? '');
@@ -110,6 +117,19 @@ const renderMarkdownImageLabel = ({
   // one (a badge): a link cannot hold another.
   if (!remote || markdownLinkDepth > 0) return span;
   return `<a href="${escapeAttr(href)}" class="external-link" target="_blank" rel="noopener noreferrer">${span}</a>`;
+};
+
+/** A remote clip outside a link, which draws as a player; it names itself by its alt text. */
+const remoteVideoOf = ({ href, title, text }: Pick<Tokens.Image, 'href' | 'title' | 'text'>): { href: string; title: string } | null => (
+  markdownLinkDepth === 0 && /^https?:\/\//i.test(href) && isVideoSource(href, text)
+    ? { href, title: title || text.trim() }
+    : null
+);
+
+/** A paragraph that is one bare clip URL: how GitHub writes an uploaded video. */
+const bareVideoOf = ({ raw, tokens }: Tokens.Paragraph): { href: string } | null => {
+  const url = raw.trim().replace(/^<(.*)>$/, '$1');
+  return tokens.length === 1 && tokens[0]?.type === 'link' && isBareVideoUrl(url) ? { href: url } : null;
 };
 
 // ---------------------------------------------------------------------------
@@ -293,7 +313,8 @@ const lexSplit = (text: string, from: number, kept: Segment[]): Split | null => 
   let lastType = '';
   for (const token of tokens) {
     const length = token.raw?.length ?? 0;
-    if (token.type !== 'space') {
+    // A paragraph of only zero-width characters draws an empty line (#5215).
+    if (token.type !== 'space' && !isInvisibleText(token.raw ?? '')) {
       segments.push({ start: offset, end: offset + length });
       lastType = token.type;
     }
@@ -419,6 +440,7 @@ const streamBlocks = (
   live: boolean,
   rawHtml: MarkdownRawHtmlMode = 'escape',
 ): MarkdownBlock[] => {
+  if (isInvisibleText(text)) return [];
   // Raw HTML of a document may open in one block and close in another; the
   // allowlist pass must see it whole.
   if (!live && rawHtml === 'sanitize') return [{ raw: text, src: text, mode: 'full', highlight: true }];
@@ -729,9 +751,15 @@ const createParser = (imageMode: MarkdownImageMode, rawHtml: MarkdownRawHtmlMode
           }
           // An attachment citation is a label, not a link: the file-type icon
           // is added by the decoration pass (`decorateAttachmentCitations`).
+          // An openable one is a button the message text opens by its
+          // `data-attachment-open` name.
           const attachment = parseAttachmentHref(target);
           if (attachment) {
-            return `<span class="${INLINE_REFERENCE_CHIP_CLASS}" data-attachment-citation="${escapeAttr(attachment.iconId)}" title="${escapeAttr(attachment.filename)}">${escapeAttr(attachment.filename)}</span>`;
+            const filename = escapeAttr(attachment.filename);
+            const chip = attachment.openable
+              ? `class="${INTERACTIVE_REFERENCE_CHIP_CLASS}" role="button" tabindex="0" data-attachment-open="${filename}"`
+              : `class="${INLINE_REFERENCE_CHIP_CLASS}"`;
+            return `<span ${chip} data-attachment-citation="${escapeAttr(attachment.iconId)}" title="${filename}">${filename}</span>`;
           }
           const skillName = parseSkillHref(target);
           if (skillName) {
@@ -741,11 +769,18 @@ const createParser = (imageMode: MarkdownImageMode, rawHtml: MarkdownRawHtmlMode
           const titleAttr = title ? ` title="${escapeAttr(title)}"` : '';
           return `<a href="${escapeAttr(target)}"${titleAttr} class="external-link" target="_blank" rel="noopener noreferrer">${text}</a>`;
         },
-        ...(imageMode === 'label' ? { image: renderMarkdownImageLabel } : {}),
-        // `false` hands a local image back to marked's own renderer.
-        ...(imageMode === 'local'
-          ? { image: (token: Tokens.Image) => (isRemoteMarkdownImageSource(token.href ?? '') ? renderMarkdownImageLabel(token) : false) }
-          : {}),
+        // `false` hands the image back to marked's own renderer.
+        image(token) {
+          if (imageMode === 'label') return renderMarkdownImageLabel(token);
+          if (imageMode === 'local' && isRemoteMarkdownImageSource(token.href ?? '')) return renderMarkdownImageLabel(token);
+          // A document draws a clip as a player; inside a link it stays an image.
+          const video = rawHtml === 'sanitize' ? remoteVideoOf(token) : null;
+          return video ? renderMarkdownVideo(video, 'metadata') : false;
+        },
+        paragraph(token) {
+          const video = rawHtml === 'sanitize' ? bareVideoOf(token) : null;
+          return video ? `${renderMarkdownVideo(video, 'metadata')}\n` : false;
+        },
       },
     },
   );
@@ -978,6 +1013,11 @@ const getDocumentPurifier = (): DOMPurifyInstance | null => {
         return;
       }
       node.setAttribute('disabled', '');
+    }
+    // A raw `<video>` without controls could not be started; it never autoplays.
+    if (node.tagName === 'VIDEO') {
+      node.setAttribute('controls', '');
+      node.setAttribute('preload', 'metadata');
     }
     // Tailwind preflight gives images `height: auto`, which beats the height
     // attribute, so `<img height="28">` would render at its natural size.

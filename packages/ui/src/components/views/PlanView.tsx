@@ -46,6 +46,7 @@ import { useI18n } from '@/lib/i18n';
 import { ContextPanelHeaderToolbar } from '@/components/layout/contextPanelHeaderSlot';
 import { useInContextPanelHeader } from '@/components/layout/contextPanelHeaderSlotContext';
 import { cn } from '@/lib/utils';
+import { useMarkdownLocalAssets } from './files/previews/useMarkdownLocalAssets';
 
 type PlanViewProps = {
   /** False while the panel holding the view is closed: nothing to keep fresh. */
@@ -224,6 +225,24 @@ export const PlanView: React.FC<PlanViewProps> = ({ visible = true, savedProject
   const editorViewRef = React.useRef<EditorView | null>(null);
   const editorWrapperRef = React.useRef<HTMLDivElement | null>(null);
   const previewRef = React.useRef<HTMLDivElement | null>(null);
+  const [previewNode, setPreviewNode] = React.useState<HTMLDivElement | null>(null);
+  const setPreviewContainer = React.useCallback((node: HTMLDivElement | null) => {
+    previewRef.current = node;
+    setPreviewNode(node);
+  }, []);
+
+  const openLinkedFile = React.useCallback((absolutePath: string) => {
+    if (!savedPlanProjectRef?.path) return;
+    useUIStore.getState().openContextFile(savedPlanProjectRef.path, absolutePath);
+  }, [savedPlanProjectRef]);
+  useMarkdownLocalAssets({
+    container: previewNode,
+    filePath: loadedProjectPlanPath,
+    workspaceRoot: savedPlanProjectRef?.path ?? null,
+    onOpenFile: openLinkedFile,
+    enabled: mdViewMode === 'preview' && hasDocument,
+    colorScheme: currentTheme.metadata.variant === 'light' ? 'light' : 'dark',
+  });
 
   const MD_VIEWER_MODE_KEY = 'openchamber:plan:md-viewer-mode';
 
@@ -639,7 +658,7 @@ export const PlanView: React.FC<PlanViewProps> = ({ visible = true, savedProject
             return;
           }
           sessionId = created.id;
-          directoryHint = created.path;
+          directoryHint = created.directory;
         } else {
           const sessionResult = await createSession(undefined, sendTargetProject.path, undefined, {
             model: { providerID: execution.providerID, id: execution.modelID, variant: execution.variant || undefined },
@@ -672,6 +691,11 @@ export const PlanView: React.FC<PlanViewProps> = ({ visible = true, savedProject
         }
 
         setCurrentSession(sessionId, directoryHint);
+        // The plan's card leads to the session working on it. A failed link
+        // costs only that shortcut, so it never holds up the send.
+        if (savedPlanProjectRef && savedPlanId) {
+          void useProjectContextStore.getState().linkPlanSession(savedPlanProjectRef, savedPlanId, sessionId);
+        }
         // "Run as goal" rides the same arm mechanism as the composer target
         // button; set explicitly either way so a stray armed flag cannot
         // leak into a non-goal plan send. The objective override carries the
@@ -712,7 +736,7 @@ export const PlanView: React.FC<PlanViewProps> = ({ visible = true, savedProject
         setIsPlanSendSubmitting(false);
       }
     },
-    [canCreateWorktree, content, createSession, currentProjectRef, initializeNewOpenChamberSession, isManagedChatPlan, loadedProjectPlanPath, pendingPlanSend, routeToChat, savedPlanProjectRef, sendMessage, sendPromptTitle, setCurrentSession]
+    [canCreateWorktree, content, createSession, currentProjectRef, initializeNewOpenChamberSession, isManagedChatPlan, loadedProjectPlanPath, pendingPlanSend, routeToChat, savedPlanId, savedPlanProjectRef, sendMessage, sendPromptTitle, setCurrentSession]
   );
 
   const blockWidgets = React.useMemo(() => {
@@ -840,7 +864,7 @@ export const PlanView: React.FC<PlanViewProps> = ({ visible = true, savedProject
                       }
                     }}
                   >
-                    <Icon name="volume-up" className={isTTSPlaying ? 'h-4 w-4 animate-pulse text-[var(--primary-text)]' : 'h-4 w-4'} />
+                    <Icon name="volume-up" className={isTTSPlaying ? 'h-4 w-4 text-[var(--primary-text)]' : 'h-4 w-4'} />
                   </Button>
                 </TooltipTrigger>
                 <TooltipContent sideOffset={8}>
@@ -902,7 +926,7 @@ export const PlanView: React.FC<PlanViewProps> = ({ visible = true, savedProject
             <div className="relative h-full">
               <div className="h-full">
                 {mdViewMode === 'preview' ? (
-                  <div className="h-full overflow-auto p-3" ref={previewRef}>
+                  <div className="h-full overflow-auto p-3" ref={setPreviewContainer}>
                     {/* Same comment-on-selection as a markdown file preview. */}
                     <FilePreviewCommentMenu
                       containerRef={previewRef}
@@ -919,7 +943,7 @@ export const PlanView: React.FC<PlanViewProps> = ({ visible = true, savedProject
                         </div>
                       }
                     >
-                      <SimpleMarkdownRenderer content={content} className="typography-markdown-body" enableFileReferences={false} />
+                      <SimpleMarkdownRenderer content={content} className="typography-markdown-body" frontmatter="properties" enableFileReferences={false} />
                     </ErrorBoundary>
                   </div>
                 ) : (
