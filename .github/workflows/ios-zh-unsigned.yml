@@ -28,7 +28,7 @@ jobs:
 
       - uses: oven-sh/setup-bun@v2
         with:
-          bun-version: '1.4.2'
+          bun-version: '1.4.3'
 
       - uses: actions/setup-node@v4
         with:
@@ -49,6 +49,8 @@ jobs:
           pod --version
           bun --version
           node --version
+          # Capacitor 8 needs CocoaPods 1.16+; the runner image can lag behind.
+          pod --version | awk -F. '($1 * 1000 + $2) < 1016 { exit 1 }'
 
       - name: Install dependencies
         run: bun install --frozen-lockfile
@@ -176,8 +178,8 @@ jobs:
           version=$(unzip -p "$ipa" 'Payload/App.app/Info.plist' | /usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' /dev/stdin)
           build=$(unzip -p "$ipa" 'Payload/App.app/Info.plist' | /usr/libexec/PlistBuddy -c 'Print :CFBundleVersion' /dev/stdin)
           echo "IPA version $version build $build"
-          test "$version" = "2.3.2"
-          test "$build" = "232"
+          test "$version" = "2.5.0"
+          test "$build" = "250"
 
       - uses: actions/upload-artifact@v4
         with:
